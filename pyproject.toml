@@ -1,0 +1,31 @@
+[project]
+name = "cutlass-examples"
+version = "0.1.0"
+description = "CUTALSS examples with Modal"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "modal>=1.2.1",
+    "torch>=2.9.0",
+    "torchvision>=0.24.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["cutlass_examples"]
+
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cu126", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+torchvision = [
+  { index = "pytorch-cu126", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
