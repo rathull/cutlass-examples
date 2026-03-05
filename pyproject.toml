@@ -1,0 +1,45 @@
+[project]
+name = "cutlass-examples"
+version = "0.1.0"
+description = "Learning CUTLASS"
+readme = "README.md"
+authors = [
+    { name="Rathul Anand", email = "notifyrathul@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "matplotlib>=3.10.8",
+    "modal>=1.3.5",
+    "ninja>=1.13.0",
+    "numpy>=2.4.2",
+    "torch>=2.10.0",
+    "torchvision>=0.25.0",
+    "triton>=3.6.0",
+]
+
+[project.scripts]
+cutlass-examples = "cutlass_examples:main"
+
+[build-system]
+requires = ["uv_build>=0.9.17,<0.10.0"]
+build-backend = "uv_build"
+
+[[tool.uv.index]]
+
+name = "pytorch-cu126"
+
+url = "https://download.pytorch.org/whl/cu126"
+
+explicit = true
+
+
+
+[tool.uv.sources]
+
+torch = [
+  { index = "pytorch-cu126", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+
+torchvision = [
+  { index = "pytorch-cu126", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
