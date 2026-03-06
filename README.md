@@ -14,9 +14,23 @@ Install dependencies:
 uv sync
 ```
 
+## Running `matmul_sm80`
+
+The `matmul_sm80` benchmark uses a minimal JIT setup:
+
+- Modal copies `src/cutlass_examples/` into the remote container so shared headers like `common/common.h` are available
+- `torch.utils.cpp_extension.load()` only compiles `matmul.cpp` and the selected kernel `.cu` files for that run
+- Shared headers are available in the remote container at `/opt/cutlass_examples/common`
+
+Run the benchmark from the repo root:
+
+```bash
+uv run modal run src/cutlass_examples/matmul_sm80/main.py --action benchmark --shape 4096,4096,4096 --versions v0,v1
+```
+
 ## Project Structure
 
-I've tested this project on CUDA 12.6.
+Benchmarking setup from [gau-nernst's learn-cuda](https://github.com/gau-nernst/learn-cuda/blob/3b90ac9b3f624bdf1f6f78d02dcd533675d36573/02e_matmul_sm100/main.py)
 
 ```
 cutlass-examples/
