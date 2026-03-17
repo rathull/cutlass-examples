@@ -18,14 +18,26 @@ uv sync
 
 The `matmul_sm80` benchmark uses a minimal JIT setup:
 
-- Modal copies `src/cutlass_examples/` into the remote container so shared headers like `common/common.h` are available
-- `torch.utils.cpp_extension.load()` only compiles `matmul.cpp` and the selected kernel `.cu` files for that run
-- Shared headers are available in the remote container at `/opt/cutlass_examples/common`
+- Note on Modal: Python modules under `src/cutlass_examples/` use package-relative imports such as `from ..common.utils import ...`
+- Run Modal in module mode so those imports stay valid: `modal run -m cutlass_examples.matmul_sm80.main`
+- Modal will include the Python package for the function automatically, but native sources still need to be mounted explicitly for `torch.utils.cpp_extension.load()`
+- Shared native headers are mounted in the remote container at `/opt/cutlass_examples/common`
 
 Run the benchmark from the repo root:
 
 ```bash
-uv run modal run src/cutlass_examples/matmul_sm80/main.py --action benchmark --shape 4096,4096,4096 --versions v0,v1
+uv run modal run -m cutlass_examples.matmul_sm80.main --action benchmark --shape 4096,4096,4096 --versions v0,v1
+
+# Adjust parameters as needed
+uv run modal run -m cutlass_examples.matmul_sm80.main \
+  --action benchmark \
+  --shape 4096,4096,4096 \
+  --versions v0,v1 \
+  --warmup-runs 50 \
+  --bench-runs 300 \
+  --quantiles 0.20,0.50,0.80,0.90,0.95,0.99 \
+  --benchmark-ref true \
+  --check-correctness true
 ```
 
 ## Project Structure
