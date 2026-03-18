@@ -6,8 +6,8 @@ import numpy as np
 
 from ..common.utils import get_tflops, quantile_label
 
-DEFAULT_WARMUP_RUNS = 50
-DEFAULT_BENCH_RUNS = 500
+DEFAULT_WARMUP_RUNS = 100
+DEFAULT_BENCH_RUNS = 5000
 DEFAULT_QUANTILES = "0.20,0.50,0.80,0.90,0.95,0.99"
 
 

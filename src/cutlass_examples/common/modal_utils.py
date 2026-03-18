@@ -15,6 +15,8 @@ def build_cuda_image(
     operating_system: str,
     local_mounts: list[tuple[Path, Path]],
     extra_pip_packages: Iterable[str] = (),
+    extra_apt_packages: Iterable[str] = (),
+    extra_commands: Iterable[str] = (),
     python_version: str = "3.12",
     torch_spec: str = "torch==2.10.0",
     torch_index_url: str = "https://download.pytorch.org/whl/cu130",
@@ -31,6 +33,15 @@ def build_cuda_image(
     if extra_pip_packages:
         image = image.uv_pip_install(*extra_pip_packages)
 
+    extra_apt_packages = tuple(extra_apt_packages)
+    if extra_apt_packages:
+        image = image.apt_install(*extra_apt_packages)
+
+    extra_commands = list(extra_commands)
+    if extra_commands:
+        image = image.run_commands(extra_commands)
+
+    # local mounts must be last -- Modal doesn't allow build steps after add_local_dir
     for local_dir, remote_dir in local_mounts:
         image = image.add_local_dir(str(local_dir), remote_path=str(remote_dir))
 

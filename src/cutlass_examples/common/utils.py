@@ -9,6 +9,7 @@ GPU_TO_ARCH = {
     "B200": "100",
 }
 
+CUTLASS_VERSION = "4.4.2"
 
 def get_tflops(m: int, n: int, k: int, latency_ms: float) -> float:
     if latency_ms <= 0:

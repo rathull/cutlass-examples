@@ -274,6 +274,9 @@ obj/
 
 a.out
 
+# Third-party dependencies cloned locally for IDE support
+third_party/
+
 # Temporary files and logs
 *.tmp
 *~

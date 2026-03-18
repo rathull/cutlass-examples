@@ -5,6 +5,7 @@ from ..common.utils import parse_csv_list
 KERNEL_SOURCES = {
     "v0": "matmul_v0.cu",
     "v1": "matmul_v1.cu",
+    "cute_v0": "matmul_cute_v0.cu",
 }
 
 DEFAULT_SHAPE = "4096,4096,4096"

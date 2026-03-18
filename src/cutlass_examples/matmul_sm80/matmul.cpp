@@ -6,6 +6,7 @@ typedef void MatmulFn(const nv_bfloat16 *A, const nv_bfloat16 *B, nv_bfloat16 *C
 
 MatmulFn matmul_v0;
 MatmulFn matmul_v1;
+MatmulFn matmul_cute_v0;
 
 template <MatmulFn matmul_fn>
 at::Tensor matmul(const at::Tensor& A, const at::Tensor& B) {
@@ -61,6 +62,5 @@ at::Tensor profile_matmul(
 TORCH_LIBRARY(my_matmul, m) {
     m.def("matmul_v0(Tensor A, Tensor B) -> Tensor"); m.impl("matmul_v0", &matmul<matmul_v0>);
     m.def("matmul_v1(Tensor A, Tensor B) -> Tensor"); m.impl("matmul_v1", &matmul<matmul_v1>);
-    // m.def("profile_matmul_v5(Tensor A, Tensor B, Tensor(a!) profiler, int num_entries) -> Tensor"); m.impl("profile_matmul_v5", &profile_matmul<profile_matmul_v5>);
-    // m.def("profile_matmul_v6(Tensor A, Tensor B, Tensor(a!) profiler, int num_entries) -> Tensor"); m.impl("profile_matmul_v6", &profile_matmul<profile_matmul_v6>);
+    m.def("matmul_cute_v0(Tensor A, Tensor B) -> Tensor"); m.impl("matmul_cute_v0", &matmul<matmul_cute_v0>);
 }
