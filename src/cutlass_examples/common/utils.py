@@ -11,6 +11,7 @@ GPU_TO_ARCH = {
 
 CUTLASS_VERSION = "4.4.2"
 
+
 def get_tflops(m: int, n: int, k: int, latency_ms: float) -> float:
     if latency_ms <= 0:
         return float("inf")
@@ -28,7 +29,27 @@ def parse_shape(shape: str) -> tuple[int, int, int]:
     parts = parse_csv_list(shape)
     if len(parts) != 3:
         raise ValueError(f"Expected shape as M,N,K but got: {shape!r}")
-    return tuple(int(part) for part in parts)  # type: ignore[return-value]
+    parsed = tuple(int(part) for part in parts)
+    if any(dim <= 0 for dim in parsed):
+        raise ValueError(f"Shape dimensions must be positive, got: {shape!r}")
+    return parsed  # type: ignore[return-value]
+
+
+def parse_shapes(shapes: str) -> list[tuple[int, int, int]]:
+    """Parse one or more M,N,K shapes separated by semicolons or whitespace."""
+    if ";" in shapes:
+        raw_shapes = [item.strip() for item in shapes.split(";") if item.strip()]
+    else:
+        whitespace_parts = shapes.split()
+        if len(whitespace_parts) > 1 and all(part.count(",") == 2 for part in whitespace_parts):
+            raw_shapes = whitespace_parts
+        else:
+            raw_shapes = [shapes.strip()] if shapes.strip() else []
+
+    parsed_shapes = [parse_shape(item) for item in raw_shapes]
+    if not parsed_shapes:
+        raise ValueError("Expected at least one shape.")
+    return parsed_shapes
 
 
 def parse_quantiles(raw: str) -> list[float]:

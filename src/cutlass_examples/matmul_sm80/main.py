@@ -3,12 +3,20 @@ from pathlib import Path
 import modal
 
 from ..common.modal_utils import REMOTE_PACKAGE_DIR, build_cuda_image
-from ..common.utils import CUTLASS_VERSION, GPU_TO_ARCH, parse_bool, parse_quantiles, parse_shape
+from ..common.utils import (
+    CUTLASS_VERSION,
+    GPU_TO_ARCH,
+    parse_bool,
+    parse_quantiles,
+    parse_shapes,
+)
 from .bench_utils import (
+    BenchmarkStats,
     DEFAULT_BENCH_RUNS,
     DEFAULT_QUANTILES,
     DEFAULT_WARMUP_RUNS,
     do_bench,
+    print_comparison,
     print_summary,
 )
 from .matmul_utils import (
@@ -50,17 +58,15 @@ app = modal.App(name="sm80-matmul", image=image)
 build_cache_volume = modal.Volume.from_name("sm80-build-cache", create_if_missing=True)
 
 
-def get_module(*, force_recompile: bool = False):
+def get_module(*, force_recompile: bool = False, return_build_log: bool = False):
+    import shutil
     import time
 
     import torch
-    import torch.utils.cpp_extension
+    from torch.utils.cpp_extension import load as load_cpp_extension
 
     from ..common.build_cache import compute_source_hash, get_cached_so
 
-    print(f"{torch.__version__ = }")
-    print(f"{torch.version.cuda = }")
-    
     assert torch.version.cuda
     # TODO: configure properly so torch CUDA version 13.2
     # assert torch.version.cuda == CUDA_VERSION, f"torch.version.cuda ({torch.version.cuda}) != CUDA_VERSION ({CUDA_VERSION})"
@@ -92,36 +98,120 @@ def get_module(*, force_recompile: bool = False):
     )
     cached_so = get_cached_so(BUILD_CACHE_DIR, source_hash, MODULE_NAME)
 
-    if not force_recompile and cached_so.exists():
-        print(f"Build cache hit [{source_hash}], skipping compilation")
-        torch.ops.load_library(str(cached_so))
+    build_log = ""
+
+    def load_or_compile() -> None:
+        if not force_recompile and cached_so.exists():
+            print(f"Build cache hit [{source_hash}], skipping compilation")
+            torch.ops.load_library(str(cached_so))
+        else:
+            reason = "force recompile" if force_recompile else "cache miss"
+            print(f"Compiling ({reason}) [{source_hash}]")
+
+            if force_recompile and cached_so.parent.exists():
+                shutil.rmtree(cached_so.parent)
+            cached_so.parent.mkdir(parents=True, exist_ok=True)
+            t0 = time.perf_counter()
+            load_cpp_extension(
+                name=MODULE_NAME,
+                sources=[str(source) for source in sources],
+                build_directory=str(cached_so.parent),
+                extra_include_paths=[str(REMOTE_COMMON_DIR), str(REMOTE_CUTLASS_INCLUDE)],
+                extra_cuda_cflags=cuda_cflags,
+                extra_ldflags=ldflags,
+                verbose=True,
+                is_python_module=False,
+            )
+            elapsed = time.perf_counter() - t0
+            print(f"Compilation took {elapsed:.1f}s")
+
+            try:
+                build_cache_volume.commit()
+            except RuntimeError as exc:
+                print(f"Skipping build cache volume commit: {exc}")
+
+    if return_build_log:
+        build_log = _capture_stdout_stderr(load_or_compile)
     else:
-        reason = "force recompile" if force_recompile else "cache miss"
-        print(f"Compiling ({reason}) [{source_hash}]")
+        load_or_compile()
 
-        cached_so.parent.mkdir(parents=True, exist_ok=True)
-        t0 = time.perf_counter()
-        torch.utils.cpp_extension.load(
-            name=MODULE_NAME,
-            sources=[str(source) for source in sources],
-            build_directory=str(cached_so.parent),
-            extra_include_paths=[str(REMOTE_COMMON_DIR), str(REMOTE_CUTLASS_INCLUDE)],
-            extra_cuda_cflags=cuda_cflags,
-            extra_ldflags=ldflags,
-            verbose=True,
-            is_python_module=False,
-        )
-        elapsed = time.perf_counter() - t0
-        print(f"Compilation took {elapsed:.1f}s")
+    module = torch.ops.my_matmul
+    if return_build_log:
+        return module, build_log
+    return module
 
-        build_cache_volume.commit()
 
-    return torch.ops.my_matmul
+def _capture_stdout_stderr(fn) -> str:
+    import os
+    import sys
+    import tempfile
+
+    sys.stdout.flush()
+    sys.stderr.flush()
+    stdout_fd = os.dup(1)
+    stderr_fd = os.dup(2)
+    try:
+        with tempfile.TemporaryFile(mode="w+b") as fp:
+            os.dup2(fp.fileno(), 1)
+            os.dup2(fp.fileno(), 2)
+            try:
+                fn()
+            finally:
+                sys.stdout.flush()
+                sys.stderr.flush()
+                os.dup2(stdout_fd, 1)
+                os.dup2(stderr_fd, 2)
+            fp.seek(0)
+            return fp.read().decode(errors="replace")
+    finally:
+        os.close(stdout_fd)
+        os.close(stderr_fd)
 
 
 @app.function(gpu=GPU, volumes={str(BUILD_CACHE_DIR): build_cache_volume})
-def profile(shape: str):
-    ...
+def profile(shape: str = DEFAULT_SHAPE):
+    raise NotImplementedError(f"Profiling is not implemented yet for shape={shape!r}")
+
+
+def _print_runtime_info() -> None:
+    import torch
+
+    device = torch.cuda.get_device_name()
+    major, minor = torch.cuda.get_device_capability()
+    print(f"device = {device} (sm_{major}{minor})")
+    print(f"torch.__version__ = {torch.__version__}")
+    print(f"torch.version.cuda = {torch.version.cuda}")
+
+
+def _make_inputs(m: int, n: int, k: int, *, seed: int):
+    import torch
+
+    generator = torch.Generator(device="cuda")
+    generator.manual_seed(seed)
+    a = torch.randn(m, k, dtype=torch.bfloat16, device="cuda", generator=generator)
+    # NT kernel path: B is K-major in memory but N-major conceptually.
+    b = torch.randn(n, k, dtype=torch.bfloat16, device="cuda", generator=generator).T
+    return a, b
+
+
+def _check_correctness(actual, expected, *, name: str) -> None:
+    import torch
+
+    diff = (actual.float() - expected.float()).abs()
+    max_abs = diff.max().item()
+    max_rel = (diff / expected.float().abs().clamp_min(1e-5)).max().item()
+    try:
+        torch.testing.assert_close(actual, expected, atol=1e-3, rtol=1.6e-2)
+    except Exception as exc:
+        raise AssertionError(
+            f"{name} failed correctness check: max_abs={max_abs:.6g}, "
+            f"max_rel={max_rel:.6g}"
+        ) from exc
+    print(
+        f"{name:16s} correctness: ok "
+        f"(max_abs={max_abs:.6g}, max_rel={max_rel:.6g})"
+    )
+
 
 @app.function(gpu=GPU, volumes={str(BUILD_CACHE_DIR): build_cache_volume})
 def benchmark(
@@ -133,46 +223,61 @@ def benchmark(
     benchmark_ref: bool = True,
     check_correctness: bool = True,
     force_recompile: bool = False,
+    seed: int = 0,
 ):
     import torch
-    
+
     selected_versions = parse_versions(versions)
     quantile_values = parse_quantiles(quantiles)
     my_matmul = get_module(force_recompile=force_recompile)
-    
-    M, N, K = parse_shape(shape)
+    shapes = parse_shapes(shape)
+
+    _print_runtime_info()
     print(
-        f"{M = }, {N = }, {K = }, "
+        f"shapes = {shapes}, "
         f"selected_versions = {selected_versions}, "
         f"{warmup_runs = }, {bench_runs = }, {quantile_values = }, "
-        f"{benchmark_ref = }, {check_correctness = }"
+        f"{benchmark_ref = }, {check_correctness = }, {seed = }"
     )
-    
-    # To use NT kernel path, B will be in K-major order in memory but N-major conceptually
-    A = torch.randn(M, K, dtype=torch.bfloat16, device="cuda")
-    B = torch.randn(N, K, dtype=torch.bfloat16, device="cuda").T
 
-    def bench_and_print(op, name: str):
-        latency_ms_list = do_bench(lambda: op(A, B), warmup_runs=warmup_runs, bench_runs=bench_runs)
-        print_summary(name, latency_ms_list, m=M, n=N, k=K, quantiles=quantile_values)
-    
-    print("\n" + "=" * 40 + " RESULTS " + "=" * 40 + "\n")
-    output_ref = torch.matmul(A, B) if (benchmark_ref or check_correctness) else None
-    if benchmark_ref:
-        bench_and_print(torch.matmul, "cuBLAS (ref)")
-    
-    for version in selected_versions:
-        f = getattr(my_matmul, f"matmul_{version}")
-        if check_correctness:
-            out = f(A, B)
-            torch.cuda.synchronize()
-            try:
-                torch.testing.assert_close(out, output_ref, atol=1e-3, rtol=1.6e-2)
-            except Exception:
-                print(output_ref)
-                print(out)
-                raise
-        bench_and_print(f, version)
+    for shape_idx, (m, n, k) in enumerate(shapes):
+        print("\n" + "=" * 34 + f" SHAPE {m}x{n}x{k} " + "=" * 34 + "\n")
+        a, b = _make_inputs(m, n, k, seed=seed + shape_idx)
+
+        def bench_and_print(op, name: str) -> BenchmarkStats:
+            latency_ms_list = do_bench(
+                lambda: op(a, b),
+                warmup_runs=warmup_runs,
+                bench_runs=bench_runs,
+            )
+            return print_summary(
+                name,
+                latency_ms_list,
+                m=m,
+                n=n,
+                k=k,
+                quantiles=quantile_values,
+            )
+
+        output_ref = torch.matmul(a, b) if (benchmark_ref or check_correctness) else None
+        results: list[BenchmarkStats] = []
+        if benchmark_ref:
+            results.append(bench_and_print(torch.matmul, "cuBLAS (ref)"))
+
+        for version in selected_versions:
+            kernel = getattr(my_matmul, f"matmul_{version}")
+            if check_correctness:
+                if output_ref is None:
+                    raise RuntimeError(
+                        "Internal error: correctness requested without a reference output."
+                    )
+                out = kernel(a, b)
+                torch.cuda.synchronize()
+                _check_correctness(out, output_ref, name=version)
+            results.append(bench_and_print(kernel, version))
+
+        print_comparison(results, baseline_name="cuBLAS (ref)" if benchmark_ref else None)
+
 
 @app.local_entrypoint()
 def main(
@@ -185,6 +290,7 @@ def main(
     benchmark_ref: str = "true",
     check_correctness: str = "true",
     force_recompile: str = "false",
+    seed: int = 0,
 ):
     if action == "benchmark":
         benchmark.remote(
@@ -196,6 +302,9 @@ def main(
             benchmark_ref=parse_bool(benchmark_ref),
             check_correctness=parse_bool(check_correctness),
             force_recompile=parse_bool(force_recompile),
+            seed=seed,
         )
+    elif action == "profile":
+        profile.remote(shape=shape)
     else:
         raise NotImplementedError(f"Action not implemented: {action}")

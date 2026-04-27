@@ -1,0 +1,78 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>ptxas Resource Report</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 2rem; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border-bottom: 1px solid #ddd; padding: 0.45rem; text-align: right; }
+    th:first-child, td:first-child { text-align: left; }
+    code { font-size: 0.85rem; }
+    .bad { color: #b00020; font-weight: 700; }
+    .ok { color: #166534; }
+    pre { background: #111827; color: #f9fafb; padding: 1rem; overflow: auto; }
+  </style>
+</head>
+<body>
+  <h1>ptxas Resource Report</h1>
+  <p>5 function records, 0 warnings.</p>
+  <table>
+    <thead>
+      <tr>
+        <th>Function</th><th>Arch</th><th>Registers/thread</th>
+        <th>SMEM bytes</th><th>Stack bytes</th><th>Spill bytes</th><th>CMEM bytes</th>
+      </tr>
+    </thead>
+    <tbody><tr><td><code>_Z11gemm_deviceIN4cute5tupleIJiiiEEENS1_IJNS0_1CILi128EEES4_NS3_ILi8EEEEEE13__nv_bfloat16NS1_IJiNS3_ILi1EEEEEENS0_6LayoutINS1_IJS4_S5_EEENS1_IJS5_S8_EEEEENSA_INS1_IJNS3_ILi32EEES5_EEESC_EES7_S9_SD_SG_S7_S9_NSA_INS1_IJS4_S4_EEENS1_IJS8_S4_EEEEENSA_INS1_IJNS3_ILi16EEESK_EEENS1_IJS8_SK_EEEEEEvT_T0_PKT1_T2_T3_T4_PKT5_T6_T7_T8_PT9_T10_T11_T12_</code></td><td>sm_80</td><td>121</td><td>4096</td><td>0</td><td class="ok">0</td><td>414</td></tr>
+<tr><td><code>_Z16matmul_v0_kernelILi128ELi128ELi64ELi2ELi2ELi2EEvPK13__nv_bfloat16S2_PS0_iii</code></td><td>sm_80</td><td>212</td><td>0</td><td>16</td><td class="ok">0</td><td>388</td></tr>
+<tr><td><code>_Z16matmul_v1_kernelILi128ELi128ELi64ELi2ELi2ELi2EEvPK13__nv_bfloat16S2_PS0_iii</code></td><td>sm_80</td><td>212</td><td>0</td><td>16</td><td class="ok">0</td><td>388</td></tr>
+<tr><td><code>_Z19gemm_cute_v1_kernelILi128ELi128ELi32EEvPK13__nv_bfloat16S2_PS0_iii</code></td><td>sm_80</td><td>165</td><td>16384</td><td>0</td><td class="ok">0</td><td>388</td></tr>
+<tr><td><code>_ZN7cutlass6KernelINS_4gemm6kernel4GemmINS1_11threadblock13MmaMultistageINS1_9GemmShapeILi128ELi128ELi32EEENS_9transform11threadblock28PredicatedTileAccessIteratorINS_11MatrixShapeILi128ELi32EEENS_10bfloat16_tENS_6layout8RowMajorELi1ENS8_29PitchLinearWarpRakedThreadMapINS_16PitchLinearShapeILi32ELi128EEELi128ENSH_ILi4ELi8EEELi8EEENS_5ArrayISD_Li8ELb0EEELb0ENSE_9NoPermuteEEENS9_25RegularTileAccessIteratorISC_SD_NSE_37RowMajorTensorOpMultiplicandCrosswiseILi16ELi32EEELi0ESK_Li16EEELNS_4arch14CacheOperation4KindE1ENSA_INSB_ILi32ELi128EEESD_NSE_11ColumnMajorELi0ESK_SM_Lb0ESN_EENSP_ISW_SD_NSE_40ColumnMajorTensorOpMultiplicandCrosswiseILi16ELi32EEELi1ESK_Li16EEELSV_1EfSF_NS4_9MmaPolicyINS1_4warp11MmaTensorOpINS6_ILi64ELi64ELi32EEESD_SR_SD_S10_fSF_NS13_17MmaTensorOpPolicyINST_3MmaINS6_ILi16ELi8ELi16EEELi32ESD_SF_SD_SX_fSF_NST_13OpMultiplyAddEEENSB_ILi1ELi1EEEEELi1ELb0EbEENSB_ILi0ELi0EEES1E_Li1EEELi4ELNS1_23SharedMemoryClearOptionE0EbEENS_8epilogue11threadblock8EpilogueIS7_S1D_Li1ENS1J_22PredicatedTileIteratorINS1J_26OutputTileOptimalThreadMapINS1J_15OutputTileShapeILi128ELi8ELi2ELi1ELi1EEENS1N_ILi1ELi8ELi1ELi1ELi8EEELi128ELi8ELi16EEESD_Lb0ESN_Lb0EEENS1I_4warp24FragmentIteratorTensorOpIS15_S18_fNSL_IfLi4ELb1EEESF_EENS1S_20TileIteratorTensorOpIS15_S18_fSF_EENS1J_18SharedLoadIteratorINS1Q_18CompactedThreadMapEfLi32EEENS1I_6thread17LinearCombinationISD_Li8EffLNS21_9ScaleType4KindE0ELNS_15FloatRoundStyleE2ESD_EENSB_ILi0ELi8EEELi1ELi1EEENS4_30GemmIdentityThreadblockSwizzleILi1EEELb0EEEEEvNT_6ParamsE</code></td><td>sm_80</td><td>230</td><td>0</td><td>0</td><td class="ok">0</td><td>720</td></tr></tbody>
+  </table>
+  <h2>Warnings</h2>
+  <ul><li>None</li></ul>
+  <h2>Raw ptxas Log</h2>
+  <pre>Compiling (force recompile) [b79025329e30600a]
+[1/7] c++ -MMD -MF matmul.o.d -DTORCH_EXTENSION_NAME=matmul_sm80_module -DTORCH_API_INCLUDE_EXTENSION_H -I/opt/cutlass_examples/common -I/opt/cutlass/include -isystem /usr/local/lib/python3.12/site-packages/torch/include -isystem /usr/local/lib/python3.12/site-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda/include -isystem /usr/local/include/python3.12 -fPIC -std=c++17 -c /opt/cutlass_examples/matmul_sm80/matmul.cpp -o matmul.o 
+[2/7] /usr/local/cuda/bin/nvcc --generate-dependencies-with-compile --dependency-output matmul_cutlass_v0.cuda.o.d -DTORCH_EXTENSION_NAME=matmul_sm80_module -DTORCH_API_INCLUDE_EXTENSION_H -I/opt/cutlass_examples/common -I/opt/cutlass/include -isystem /usr/local/lib/python3.12/site-packages/torch/include -isystem /usr/local/lib/python3.12/site-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda/include -isystem /usr/local/include/python3.12 -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_BFLOAT16_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr --compiler-options &#x27;-fPIC&#x27; -O3 -lineinfo -Xptxas=-v -gencode=arch=compute_80,code=sm_80 -std=c++17 -c /opt/cutlass_examples/matmul_sm80/matmul_cutlass_v0.cu -o matmul_cutlass_v0.cuda.o 
+ptxas info    : 11 bytes gmem, 88 bytes cmem[4]
+ptxas info    : Compiling entry function &#x27;_ZN7cutlass6KernelINS_4gemm6kernel4GemmINS1_11threadblock13MmaMultistageINS1_9GemmShapeILi128ELi128ELi32EEENS_9transform11threadblock28PredicatedTileAccessIteratorINS_11MatrixShapeILi128ELi32EEENS_10bfloat16_tENS_6layout8RowMajorELi1ENS8_29PitchLinearWarpRakedThreadMapINS_16PitchLinearShapeILi32ELi128EEELi128ENSH_ILi4ELi8EEELi8EEENS_5ArrayISD_Li8ELb0EEELb0ENSE_9NoPermuteEEENS9_25RegularTileAccessIteratorISC_SD_NSE_37RowMajorTensorOpMultiplicandCrosswiseILi16ELi32EEELi0ESK_Li16EEELNS_4arch14CacheOperation4KindE1ENSA_INSB_ILi32ELi128EEESD_NSE_11ColumnMajorELi0ESK_SM_Lb0ESN_EENSP_ISW_SD_NSE_40ColumnMajorTensorOpMultiplicandCrosswiseILi16ELi32EEELi1ESK_Li16EEELSV_1EfSF_NS4_9MmaPolicyINS1_4warp11MmaTensorOpINS6_ILi64ELi64ELi32EEESD_SR_SD_S10_fSF_NS13_17MmaTensorOpPolicyINST_3MmaINS6_ILi16ELi8ELi16EEELi32ESD_SF_SD_SX_fSF_NST_13OpMultiplyAddEEENSB_ILi1ELi1EEEEELi1ELb0EbEENSB_ILi0ELi0EEES1E_Li1EEELi4ELNS1_23SharedMemoryClearOptionE0EbEENS_8epilogue11threadblock8EpilogueIS7_S1D_Li1ENS1J_22PredicatedTileIteratorINS1J_26OutputTileOptimalThreadMapINS1J_15OutputTileShapeILi128ELi8ELi2ELi1ELi1EEENS1N_ILi1ELi8ELi1ELi1ELi8EEELi128ELi8ELi16EEESD_Lb0ESN_Lb0EEENS1I_4warp24FragmentIteratorTensorOpIS15_S18_fNSL_IfLi4ELb1EEESF_EENS1S_20TileIteratorTensorOpIS15_S18_fSF_EENS1J_18SharedLoadIteratorINS1Q_18CompactedThreadMapEfLi32EEENS1I_6thread17LinearCombinationISD_Li8EffLNS21_9ScaleType4KindE0ELNS_15FloatRoundStyleE2ESD_EENSB_ILi0ELi8EEELi1ELi1EEENS4_30GemmIdentityThreadblockSwizzleILi1EEELb0EEEEEvNT_6ParamsE&#x27; for &#x27;sm_80&#x27;
+ptxas info    : Function properties for _ZN7cutlass6KernelINS_4gemm6kernel4GemmINS1_11threadblock13MmaMultistageINS1_9GemmShapeILi128ELi128ELi32EEENS_9transform11threadblock28PredicatedTileAccessIteratorINS_11MatrixShapeILi128ELi32EEENS_10bfloat16_tENS_6layout8RowMajorELi1ENS8_29PitchLinearWarpRakedThreadMapINS_16PitchLinearShapeILi32ELi128EEELi128ENSH_ILi4ELi8EEELi8EEENS_5ArrayISD_Li8ELb0EEELb0ENSE_9NoPermuteEEENS9_25RegularTileAccessIteratorISC_SD_NSE_37RowMajorTensorOpMultiplicandCrosswiseILi16ELi32EEELi0ESK_Li16EEELNS_4arch14CacheOperation4KindE1ENSA_INSB_ILi32ELi128EEESD_NSE_11ColumnMajorELi0ESK_SM_Lb0ESN_EENSP_ISW_SD_NSE_40ColumnMajorTensorOpMultiplicandCrosswiseILi16ELi32EEELi1ESK_Li16EEELSV_1EfSF_NS4_9MmaPolicyINS1_4warp11MmaTensorOpINS6_ILi64ELi64ELi32EEESD_SR_SD_S10_fSF_NS13_17MmaTensorOpPolicyINST_3MmaINS6_ILi16ELi8ELi16EEELi32ESD_SF_SD_SX_fSF_NST_13OpMultiplyAddEEENSB_ILi1ELi1EEEEELi1ELb0EbEENSB_ILi0ELi0EEES1E_Li1EEELi4ELNS1_23SharedMemoryClearOptionE0EbEENS_8epilogue11threadblock8EpilogueIS7_S1D_Li1ENS1J_22PredicatedTileIteratorINS1J_26OutputTileOptimalThreadMapINS1J_15OutputTileShapeILi128ELi8ELi2ELi1ELi1EEENS1N_ILi1ELi8ELi1ELi1ELi8EEELi128ELi8ELi16EEESD_Lb0ESN_Lb0EEENS1I_4warp24FragmentIteratorTensorOpIS15_S18_fNSL_IfLi4ELb1EEESF_EENS1S_20TileIteratorTensorOpIS15_S18_fSF_EENS1J_18SharedLoadIteratorINS1Q_18CompactedThreadMapEfLi32EEENS1I_6thread17LinearCombinationISD_Li8EffLNS21_9ScaleType4KindE0ELNS_15FloatRoundStyleE2ESD_EENSB_ILi0ELi8EEELi1ELi1EEENS4_30GemmIdentityThreadblockSwizzleILi1EEELb0EEEEEvNT_6ParamsE
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 230 registers, used 1 barriers, 720 bytes cmem[0]
+ptxas info    : Compile time = 480.222 ms
+[3/7] /usr/local/cuda/bin/nvcc --generate-dependencies-with-compile --dependency-output matmul_cute_v0.cuda.o.d -DTORCH_EXTENSION_NAME=matmul_sm80_module -DTORCH_API_INCLUDE_EXTENSION_H -I/opt/cutlass_examples/common -I/opt/cutlass/include -isystem /usr/local/lib/python3.12/site-packages/torch/include -isystem /usr/local/lib/python3.12/site-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda/include -isystem /usr/local/include/python3.12 -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_BFLOAT16_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr --compiler-options &#x27;-fPIC&#x27; -O3 -lineinfo -Xptxas=-v -gencode=arch=compute_80,code=sm_80 -std=c++17 -c /opt/cutlass_examples/matmul_sm80/matmul_cute_v0.cu -o matmul_cute_v0.cuda.o 
+ptxas info    : 11 bytes gmem, 88 bytes cmem[4]
+ptxas info    : Compiling entry function &#x27;_Z11gemm_deviceIN4cute5tupleIJiiiEEENS1_IJNS0_1CILi128EEES4_NS3_ILi8EEEEEE13__nv_bfloat16NS1_IJiNS3_ILi1EEEEEENS0_6LayoutINS1_IJS4_S5_EEENS1_IJS5_S8_EEEEENSA_INS1_IJNS3_ILi32EEES5_EEESC_EES7_S9_SD_SG_S7_S9_NSA_INS1_IJS4_S4_EEENS1_IJS8_S4_EEEEENSA_INS1_IJNS3_ILi16EEESK_EEENS1_IJS8_SK_EEEEEEvT_T0_PKT1_T2_T3_T4_PKT5_T6_T7_T8_PT9_T10_T11_T12_&#x27; for &#x27;sm_80&#x27;
+ptxas info    : Function properties for _Z11gemm_deviceIN4cute5tupleIJiiiEEENS1_IJNS0_1CILi128EEES4_NS3_ILi8EEEEEE13__nv_bfloat16NS1_IJiNS3_ILi1EEEEEENS0_6LayoutINS1_IJS4_S5_EEENS1_IJS5_S8_EEEEENSA_INS1_IJNS3_ILi32EEES5_EEESC_EES7_S9_SD_SG_S7_S9_NSA_INS1_IJS4_S4_EEENS1_IJS8_S4_EEEEENSA_INS1_IJNS3_ILi16EEESK_EEENS1_IJS8_SK_EEEEEEvT_T0_PKT1_T2_T3_T4_PKT5_T6_T7_T8_PT9_T10_T11_T12_
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 121 registers, used 1 barriers, 4096 bytes smem, 414 bytes cmem[0]
+ptxas info    : Compile time = 79.987 ms
+[4/7] /usr/local/cuda/bin/nvcc --generate-dependencies-with-compile --dependency-output matmul_cute_v1.cuda.o.d -DTORCH_EXTENSION_NAME=matmul_sm80_module -DTORCH_API_INCLUDE_EXTENSION_H -I/opt/cutlass_examples/common -I/opt/cutlass/include -isystem /usr/local/lib/python3.12/site-packages/torch/include -isystem /usr/local/lib/python3.12/site-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda/include -isystem /usr/local/include/python3.12 -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_BFLOAT16_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr --compiler-options &#x27;-fPIC&#x27; -O3 -lineinfo -Xptxas=-v -gencode=arch=compute_80,code=sm_80 -std=c++17 -c /opt/cutlass_examples/matmul_sm80/matmul_cute_v1.cu -o matmul_cute_v1.cuda.o 
+ptxas info    : 11 bytes gmem, 88 bytes cmem[4]
+ptxas info    : Compiling entry function &#x27;_Z19gemm_cute_v1_kernelILi128ELi128ELi32EEvPK13__nv_bfloat16S2_PS0_iii&#x27; for &#x27;sm_80&#x27;
+ptxas info    : Function properties for _Z19gemm_cute_v1_kernelILi128ELi128ELi32EEvPK13__nv_bfloat16S2_PS0_iii
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 165 registers, used 1 barriers, 16384 bytes smem, 388 bytes cmem[0]
+ptxas info    : Compile time = 77.139 ms
+[5/7] /usr/local/cuda/bin/nvcc --generate-dependencies-with-compile --dependency-output matmul_v0.cuda.o.d -DTORCH_EXTENSION_NAME=matmul_sm80_module -DTORCH_API_INCLUDE_EXTENSION_H -I/opt/cutlass_examples/common -I/opt/cutlass/include -isystem /usr/local/lib/python3.12/site-packages/torch/include -isystem /usr/local/lib/python3.12/site-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda/include -isystem /usr/local/include/python3.12 -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_BFLOAT16_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr --compiler-options &#x27;-fPIC&#x27; -O3 -lineinfo -Xptxas=-v -gencode=arch=compute_80,code=sm_80 -std=c++17 -c /opt/cutlass_examples/matmul_sm80/matmul_v0.cu -o matmul_v0.cuda.o 
+ptxas info    : 28 bytes gmem, 224 bytes cmem[4]
+ptxas info    : Compiling entry function &#x27;_Z16matmul_v0_kernelILi128ELi128ELi64ELi2ELi2ELi2EEvPK13__nv_bfloat16S2_PS0_iii&#x27; for &#x27;sm_80&#x27;
+ptxas info    : Function properties for _Z16matmul_v0_kernelILi128ELi128ELi64ELi2ELi2ELi2EEvPK13__nv_bfloat16S2_PS0_iii
+    16 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 212 registers, used 1 barriers, 16 bytes cumulative stack size, 388 bytes cmem[0]
+ptxas info    : Compile time = 127.406 ms
+[6/7] /usr/local/cuda/bin/nvcc --generate-dependencies-with-compile --dependency-output matmul_v1.cuda.o.d -DTORCH_EXTENSION_NAME=matmul_sm80_module -DTORCH_API_INCLUDE_EXTENSION_H -I/opt/cutlass_examples/common -I/opt/cutlass/include -isystem /usr/local/lib/python3.12/site-packages/torch/include -isystem /usr/local/lib/python3.12/site-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda/include -isystem /usr/local/include/python3.12 -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_BFLOAT16_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr --compiler-options &#x27;-fPIC&#x27; -O3 -lineinfo -Xptxas=-v -gencode=arch=compute_80,code=sm_80 -std=c++17 -c /opt/cutlass_examples/matmul_sm80/matmul_v1.cu -o matmul_v1.cuda.o 
+ptxas info    : 28 bytes gmem, 224 bytes cmem[4]
+ptxas info    : Compiling entry function &#x27;_Z16matmul_v1_kernelILi128ELi128ELi64ELi2ELi2ELi2EEvPK13__nv_bfloat16S2_PS0_iii&#x27; for &#x27;sm_80&#x27;
+ptxas info    : Function properties for _Z16matmul_v1_kernelILi128ELi128ELi64ELi2ELi2ELi2EEvPK13__nv_bfloat16S2_PS0_iii
+    16 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 212 registers, used 1 barriers, 16 bytes cumulative stack size, 388 bytes cmem[0]
+ptxas info    : Compile time = 139.907 ms
+[7/7] c++ matmul.o matmul_v0.cuda.o matmul_v1.cuda.o matmul_cute_v0.cuda.o matmul_cute_v1.cuda.o matmul_cutlass_v0.cuda.o -shared -L/usr/local/lib/python3.12/site-packages/torch/lib -lc10 -lc10_cuda -ltorch_cpu -ltorch_cuda -ltorch -ltorch_python -L/usr/local/cuda/lib64 -lcudart -o matmul_sm80_module.so
+Compilation took 31.1s
+Skipping build cache volume commit: volume vo-tvUJE4c6Mb4fAstw3YZZvL not attached. Ensure volume is attached via `@app.function(volumes={...})`
+</pre>
+</body>
+</html>

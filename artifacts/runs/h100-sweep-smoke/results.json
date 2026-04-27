@@ -1,0 +1,217 @@
+{
+  "created_at": "2026-04-27T22:46:40.269590+00:00",
+  "metadata": {
+    "records": 2,
+    "hostname": "modal",
+    "python": "3.12.1",
+    "git_sha": null,
+    "torch": "2.10.0+cu130",
+    "torch_cuda": "13.0",
+    "device_name": "NVIDIA H100 80GB HBM3",
+    "compute_capability": "sm_90"
+  },
+  "config": {
+    "problem": "gemm",
+    "gpu": "H100!",
+    "kernels": [
+      "cuBLAS",
+      "hopper_triton_v0"
+    ],
+    "shapes": [
+      {
+        "m": 64,
+        "n": 64,
+        "k": 64
+      }
+    ],
+    "dtype": "bf16",
+    "warmup_runs": 1,
+    "bench_runs": 3,
+    "quantiles": [
+      0.2,
+      0.5,
+      0.8,
+      0.9,
+      0.95,
+      0.99
+    ],
+    "repetitions": 1,
+    "seed": 0,
+    "check_correctness": true,
+    "benchmark_ref": true
+  },
+  "results": [
+    {
+      "problem": "gemm",
+      "kernel": "cuBLAS",
+      "kind": "reference",
+      "gpu": "H100!",
+      "shape": {
+        "m": 64,
+        "n": 64,
+        "k": 64
+      },
+      "dtype": "bf16",
+      "stats": {
+        "samples": 3,
+        "mean_ms": 0.0329386672625939,
+        "std_ms": 0.009926443414185656,
+        "min_ms": 0.02579200081527233,
+        "median_ms": 0.026048000901937485,
+        "max_ms": 0.0469760000705719,
+        "quantiles_ms": {
+          "p20": 0.025894400849938392,
+          "p50": 0.026048000901937485,
+          "p80": 0.03860480040311814,
+          "p90": 0.042790400236845015,
+          "p95": 0.044883200153708454,
+          "p99": 0.04655744008719921
+        },
+        "m": 64,
+        "n": 64,
+        "k": 64
+      },
+      "correctness": {
+        "passed": true,
+        "max_abs": 0.0,
+        "max_rel": 0.0,
+        "error": null
+      },
+      "repetition": 0,
+      "tags": [
+        "reference",
+        "baseline"
+      ]
+    },
+    {
+      "problem": "gemm",
+      "kernel": "hopper_triton_v0",
+      "kind": "triton",
+      "gpu": "H100!",
+      "shape": {
+        "m": 64,
+        "n": 64,
+        "k": 64
+      },
+      "dtype": "bf16",
+      "stats": {
+        "samples": 3,
+        "mean_ms": 0.04672000060478846,
+        "std_ms": 0.007543181646699487,
+        "min_ms": 0.04095999896526337,
+        "median_ms": 0.04182400181889534,
+        "max_ms": 0.05737600103020668,
+        "quantiles_ms": {
+          "p20": 0.041305600106716155,
+          "p50": 0.04182400181889534,
+          "p80": 0.05115520134568215,
+          "p90": 0.054265601187944414,
+          "p95": 0.055820801109075543,
+          "p99": 0.05706496104598045
+        },
+        "m": 64,
+        "n": 64,
+        "k": 64
+      },
+      "correctness": {
+        "passed": true,
+        "max_abs": 0.0,
+        "max_rel": 0.0,
+        "error": null
+      },
+      "repetition": 0,
+      "tags": [
+        "hopper",
+        "blackwell",
+        "triton",
+        "starter"
+      ]
+    },
+    {
+      "problem": "gemm",
+      "kernel": "cuBLAS",
+      "kind": "reference",
+      "gpu": "H100!",
+      "shape": {
+        "m": 128,
+        "n": 128,
+        "k": 128
+      },
+      "dtype": "bf16",
+      "stats": {
+        "samples": 3,
+        "mean_ms": 0.030816000575820606,
+        "std_ms": 0.007577223878271624,
+        "min_ms": 0.023584000766277313,
+        "median_ms": 0.027583999559283257,
+        "max_ms": 0.041280001401901245,
+        "quantiles_ms": {
+          "p20": 0.02518400028347969,
+          "p50": 0.027583999559283257,
+          "p80": 0.03580160066485405,
+          "p90": 0.03854080103337765,
+          "p95": 0.039910401217639446,
+          "p99": 0.04100608136504889
+        },
+        "m": 128,
+        "n": 128,
+        "k": 128
+      },
+      "correctness": {
+        "passed": true,
+        "max_abs": 0.0,
+        "max_rel": 0.0,
+        "error": null
+      },
+      "repetition": 0,
+      "tags": [
+        "reference",
+        "baseline"
+      ]
+    },
+    {
+      "problem": "gemm",
+      "kernel": "hopper_triton_v0",
+      "kind": "triton",
+      "gpu": "H100!",
+      "shape": {
+        "m": 128,
+        "n": 128,
+        "k": 128
+      },
+      "dtype": "bf16",
+      "stats": {
+        "samples": 3,
+        "mean_ms": 0.05000533163547516,
+        "std_ms": 0.009963681631442222,
+        "min_ms": 0.04291199892759323,
+        "median_ms": 0.043007999658584595,
+        "max_ms": 0.06409599632024765,
+        "quantiles_ms": {
+          "p20": 0.04295039921998978,
+          "p50": 0.043007999658584595,
+          "p80": 0.055660797655582434,
+          "p90": 0.05987839698791504,
+          "p95": 0.06198719665408134,
+          "p99": 0.06367423638701439
+        },
+        "m": 128,
+        "n": 128,
+        "k": 128
+      },
+      "correctness": {
+        "passed": true,
+        "max_abs": 0.0,
+        "max_rel": 0.0,
+        "error": null
+      },
+      "repetition": 0,
+      "tags": [
+        "hopper",
+        "blackwell",
+        "triton",
+        "starter"
+      ]
+    }
+  ]
+}

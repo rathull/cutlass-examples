@@ -6,6 +6,8 @@ KERNEL_SOURCES = {
     "v0": "matmul_v0.cu",
     "v1": "matmul_v1.cu",
     "cute_v0": "matmul_cute_v0.cu",
+    "cute_v1": "matmul_cute_v1.cu",
+    "cutlass_v0": "matmul_cutlass_v0.cu",
 }
 
 DEFAULT_SHAPE = "4096,4096,4096"
