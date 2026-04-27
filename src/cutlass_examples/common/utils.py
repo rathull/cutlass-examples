@@ -1,9 +1,6 @@
 from __future__ import annotations
 
 GPU_TO_ARCH = {
-    "A100": "80",
-    "A100-40GB": "80",
-    "A100-80GB": "80",
     "H100": "90",
     "H200": "90",
     "B200": "100",

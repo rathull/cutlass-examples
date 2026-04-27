@@ -64,16 +64,17 @@ uv run modal run -m cutlass_examples.cli \
   --out artifacts/runs/hopper-sweep
 ```
 
-Inspect native CUDA resource usage from `ptxas -v`:
+Inspect native CUDA resource usage from `ptxas -v` for kernels that expose a
+`ptxas` inspection hook:
 
 ```bash
 uv run modal run -m cutlass_examples.cli \
   --command ptxas \
   --problem gemm_hopper \
-  --gpu a100 \
-  --kernels sm80_v0 \
+  --gpu h100 \
+  --kernels <native_kernel_name> \
   --force-prepare true \
-  --out artifacts/ptxas/sm80
+  --out artifacts/ptxas/<run-name>
 ```
 
 This force-compiles native CUDA/CuTe C++ kernels with `-Xptxas=-v`, parses the
@@ -86,8 +87,7 @@ compiler log, and writes:
 
 The report includes registers/thread, static shared memory, stack frame bytes,
 spill stores/loads, constant memory, warnings, and the raw `ptxas` log. This
-only applies to kernels with a `ptxas` inspection hook, currently the native
-CUDA/CuTe C++ SM80 kernels.
+only applies to native CUDA/CuTe C++ kernels with a registered `ptxas` hook.
 
 Each run writes:
 
@@ -135,7 +135,6 @@ kernels without remembering every kernel name.
 
 Examples:
 
-- `sm80`: kernels intended for Ampere/A100.
 - `hopper`: kernels intended for Hopper/H100 or H200.
 - `blackwell`: kernels expected to run on B200.
 - `triton`, `gluon`, `cute_dsl`, `native_cuda`: implementation families.
@@ -178,20 +177,9 @@ uv run modal run -m cutlass_examples.cli \
 - Use `--gpu b200` for Blackwell.
 - The Modal image installs Torch, Triton, Gluon via Triton, and
   `nvidia-cutlass-dsl[cu13]`.
-- Native build caches are split by architecture: `sm80`, `sm90`, and `sm100`.
+- Native build caches are split by architecture: `sm90` and `sm100`.
 - First runs may compile or JIT kernels; later runs should hit Modal volumes and
   framework caches.
-
-## Legacy `matmul_sm80`
-
-The previous entrypoint still works for existing SM80 kernels:
-
-```bash
-uv run modal run -m cutlass_examples.matmul_sm80.main \
-  --action benchmark \
-  --shape 4096,4096,4096 \
-  --versions v0,v1
-```
 
 ## Project Structure
 
@@ -216,17 +204,9 @@ cutlass-examples/
         │       ├── problem.py
         │       ├── registry.py
         │       └── backends/
-        │           ├── native_cuda/
         │           ├── triton/
         │           ├── gluon/
         │           ├── cute_dsl/
         │           └── reference/
-        ├── matmul_sm80/
-        │   ├── __init__.py
-        │   ├── main.py       # Legacy Modal app
-        │   ├── matmul.cpp    # PyTorch bindings
-        │   ├── bench_utils.py
-        │   ├── matmul_v0.cu
-        │   └── matmul_v1.cu
         └── ...
 ```

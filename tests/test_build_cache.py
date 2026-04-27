@@ -199,19 +199,19 @@ class TestCacheLookup:
         h = compute_source_hash(
             sources=source_files, include_files=include_files, **default_flags,
         )
-        so = get_cached_so(tmp_path, h, "matmul_sm80_module")
+        so = get_cached_so(tmp_path, h, "test_module")
         assert not so.exists()
 
     def test_cache_hit_after_store(self, tmp_path, source_files, include_files, default_flags):
         h = compute_source_hash(
             sources=source_files, include_files=include_files, **default_flags,
         )
-        so = get_cached_so(tmp_path, h, "matmul_sm80_module")
+        so = get_cached_so(tmp_path, h, "test_module")
         so.parent.mkdir(parents=True, exist_ok=True)
         so.write_bytes(b"\x7fELF_fake_so")  # simulate a compiled .so
 
         # look it up again with the same hash
-        so2 = get_cached_so(tmp_path, h, "matmul_sm80_module")
+        so2 = get_cached_so(tmp_path, h, "test_module")
         assert so2.exists()
         assert so2.read_bytes() == b"\x7fELF_fake_so"
 

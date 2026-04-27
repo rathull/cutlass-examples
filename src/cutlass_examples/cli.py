@@ -41,18 +41,9 @@ image = build_kernel_image(
 )
 app = modal.App(name="kernel-benchmarks", image=image)
 
-build_cache_sm80 = modal.Volume.from_name("kernel-bench-build-sm80", create_if_missing=True)
 build_cache_sm90 = modal.Volume.from_name("kernel-bench-build-sm90", create_if_missing=True)
 build_cache_sm100 = modal.Volume.from_name("kernel-bench-build-sm100", create_if_missing=True)
 artifacts_volume = modal.Volume.from_name("kernel-bench-artifacts", create_if_missing=True)
-
-
-@app.function(
-    gpu="A100",
-    volumes={str(BUILD_CACHE_DIR): build_cache_sm80, str(ARTIFACTS_DIR): artifacts_volume},
-)
-def _doctor_a100() -> dict[str, object]:
-    return _doctor()
 
 
 @app.function(
@@ -68,22 +59,6 @@ def _doctor_h100() -> dict[str, object]:
 )
 def _doctor_b200() -> dict[str, object]:
     return _doctor()
-
-
-@app.function(
-    gpu="A100",
-    volumes={str(BUILD_CACHE_DIR): build_cache_sm80, str(ARTIFACTS_DIR): artifacts_volume},
-)
-def _benchmark_a100(job: dict[str, Any]) -> dict[str, object]:
-    return _run_remote_job(job)
-
-
-@app.function(
-    gpu="A100",
-    volumes={str(BUILD_CACHE_DIR): build_cache_sm80, str(ARTIFACTS_DIR): artifacts_volume},
-)
-def _ptxas_a100(job: dict[str, Any]) -> dict[str, object]:
-    return _run_remote_ptxas(job)
 
 
 @app.function(
@@ -335,8 +310,6 @@ def _make_sweep_jobs(**kwargs: Any) -> list[dict[str, Any]]:
 
 def _benchmark_fn(gpu: str):
     arch = gpu_arch(gpu)
-    if arch == "sm80":
-        return _benchmark_a100
     if arch == "sm90":
         return _benchmark_h100
     if arch == "sm100":
@@ -346,8 +319,6 @@ def _benchmark_fn(gpu: str):
 
 def _ptxas_fn(gpu: str):
     arch = gpu_arch(gpu)
-    if arch == "sm80":
-        return _ptxas_a100
     if arch == "sm90":
         return _ptxas_h100
     if arch == "sm100":
@@ -357,8 +328,6 @@ def _ptxas_fn(gpu: str):
 
 def _doctor_fn(gpu: str):
     arch = gpu_arch(gpu)
-    if arch == "sm80":
-        return _doctor_a100
     if arch == "sm90":
         return _doctor_h100
     if arch == "sm100":

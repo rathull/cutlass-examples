@@ -22,7 +22,6 @@ DEFAULT_KERNEL_PACKAGES = (
 )
 
 GPU_ALIASES = {
-    "a100": "A100",
     "h100": "H100!",
     "h100!": "H100!",
     "h200": "H200",
@@ -78,8 +77,6 @@ def normalize_gpu(gpu: str) -> str:
 
 def gpu_arch(gpu: str) -> str:
     normalized = normalize_gpu(gpu).upper().rstrip("!+")
-    if normalized.startswith("A100"):
-        return "sm80"
     if normalized in {"H100", "H200"}:
         return "sm90"
     if normalized in {"B200", "B300"}:
