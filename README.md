@@ -118,6 +118,27 @@ src/cutlass_examples/problems/gemm_hopper_bf16/kernels/native_cuda/cutlass_wgmma
 
 Native wrapping/compilation lives outside the kernel files in
 `src/cutlass_examples/problems/gemm_hopper_bf16/native_extension.py`.
+The repo includes minimal H100 examples for each supported kernel kind:
+
+- `triton_v0`: a simple Triton BF16 GEMM.
+- `gluon_smoke`: launches a tiny Gluon kernel, then participates in the GEMM benchmark path.
+- `cute_dsl_smoke`: launches a tiny CuTe DSL kernel, then participates in the GEMM benchmark path.
+- `cuda_inline_ptx_v0`: a naive native CUDA BF16 GEMM with an inline PTX marker.
+
+To compile and compare all examples on H100:
+
+```bash
+uv run modal run -m cutlass_examples.cli \
+  --command benchmark \
+  --problem gemm_hopper_bf16 \
+  --gpu h100 \
+  --kernels cublas,triton_v0,gluon_smoke,cute_dsl_smoke,cuda_inline_ptx_v0 \
+  --shapes 64,64,64 \
+  --warmup-runs 1 \
+  --bench-runs 2 \
+  --force-prepare true \
+  --out artifacts/runs/h100-language-smoke
+```
 
 After that, run it by name:
 
