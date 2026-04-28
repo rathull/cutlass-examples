@@ -6,6 +6,7 @@ from .kernel_registry import KernelSpec
 
 PYTHON_KERNEL_KINDS = {"reference", "triton", "gluon", "cute_dsl"}
 NATIVE_KERNEL_KINDS = {"native_cuda"}
+NATIVE_SOURCE_SUFFIXES = (".cu", ".cpp", ".cc", ".cxx", ".cuh")
 
 
 def discover_problem_kernels(
@@ -36,13 +37,17 @@ def discover_problem_kernels(
                         default_supported_dtypes=default_supported_dtypes,
                     )
                 )
-            elif path.suffix == ".cu" and kind in NATIVE_KERNEL_KINDS:
+            elif path.suffix == ".py" and kind in NATIVE_KERNEL_KINDS:
+                source_path = _native_source_for_runner(path)
+                if source_path is None:
+                    continue
                 specs.append(
                     _native_kernel_spec(
                         problem=problem,
                         problem_dir=problem_dir,
                         kind=kind,
                         path=path,
+                        source_path=source_path,
                         default_supported_gpus=default_supported_gpus,
                         default_supported_dtypes=default_supported_dtypes,
                     )
@@ -82,25 +87,35 @@ def _native_kernel_spec(
     problem_dir: Path,
     kind: str,
     path: Path,
+    source_path: Path,
     default_supported_gpus: tuple[str, ...],
     default_supported_dtypes: tuple[str, ...],
 ) -> KernelSpec:
-    source = _relative_to_problem(problem_dir, path)
+    source = _relative_to_problem(problem_dir, source_path)
+    module = _module_for_kernel(problem, kind, path.stem)
     return KernelSpec(
         name=path.stem,
         problem=problem,
         kind=kind,
-        target=f"cutlass_examples.problems.{problem}.native_extension:{path.stem}",
+        target=f"{module}:run",
         source=source,
         supported_gpus=default_supported_gpus,
         supported_dtypes=default_supported_dtypes,
         metadata={
-            "path": source,
+            "path": _relative_to_problem(problem_dir, path),
             "source": source,
-            "prepare": f"cutlass_examples.problems.{problem}.native_extension:prepare",
-            "ptxas": f"cutlass_examples.problems.{problem}.native_extension:inspect_ptxas",
+            "prepare": f"{module}:prepare",
+            "ptxas": f"{module}:inspect_ptxas",
         },
     )
+
+
+def _native_source_for_runner(path: Path) -> Path | None:
+    for suffix in NATIVE_SOURCE_SUFFIXES:
+        candidate = path.with_suffix(suffix)
+        if candidate.exists():
+            return candidate
+    return None
 
 
 def _module_for_kernel(problem: str, kind: str, stem: str) -> str:

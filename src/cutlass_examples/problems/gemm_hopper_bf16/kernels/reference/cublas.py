@@ -1,7 +1,14 @@
 from __future__ import annotations
 
 
-def run(inputs):
+def run(inputs, outputs):
     import torch
 
-    return torch.matmul(inputs.a, inputs.b)
+    return torch.addmm(
+        outputs.c,
+        inputs.a,
+        inputs.b.T,
+        beta=inputs.beta,
+        alpha=inputs.alpha,
+        out=outputs.c,
+    )

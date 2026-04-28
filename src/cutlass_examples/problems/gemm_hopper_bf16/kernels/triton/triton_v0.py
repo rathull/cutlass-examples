@@ -4,14 +4,12 @@ import triton
 import triton.language as tl
 
 
-def run(inputs, *, block_m: int = 32, block_n: int = 32, block_k: int = 32):
-    import torch
-
+def run(inputs, outputs, *, block_m: int = 32, block_n: int = 32, block_k: int = 32):
     a = inputs.a
     b = inputs.b
+    c = outputs.c
     m, k = a.shape
-    _, n = b.shape
-    c = torch.empty((m, n), device=a.device, dtype=a.dtype)
+    n, _ = b.shape
     grid = (triton.cdiv(m, block_m), triton.cdiv(n, block_n))
     _matmul_kernel[grid](
         a,
@@ -20,12 +18,8 @@ def run(inputs, *, block_m: int = 32, block_n: int = 32, block_k: int = 32):
         m,
         n,
         k,
-        a.stride(0),
-        a.stride(1),
-        b.stride(0),
-        b.stride(1),
-        c.stride(0),
-        c.stride(1),
+        inputs.alpha,
+        inputs.beta,
         BLOCK_M=block_m,
         BLOCK_N=block_n,
         BLOCK_K=block_k,
@@ -41,12 +35,8 @@ def _matmul_kernel(
     m: tl.constexpr,
     n: tl.constexpr,
     k: tl.constexpr,
-    stride_am: tl.constexpr,
-    stride_ak: tl.constexpr,
-    stride_bk: tl.constexpr,
-    stride_bn: tl.constexpr,
-    stride_cm: tl.constexpr,
-    stride_cn: tl.constexpr,
+    alpha: tl.constexpr,
+    beta: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
@@ -61,19 +51,30 @@ def _matmul_kernel(
     for k_start in range(0, k, BLOCK_K):
         k_idx = k_start + offs_k
         a = tl.load(
-            a_ptr + offs_m[:, None] * stride_am + k_idx[None, :] * stride_ak,
+            a_ptr + offs_m[:, None] * k + k_idx[None, :],
             mask=(offs_m[:, None] < m) & (k_idx[None, :] < k),
             other=0.0,
         )
         b = tl.load(
-            b_ptr + k_idx[:, None] * stride_bk + offs_n[None, :] * stride_bn,
+            b_ptr + offs_n[None, :] * k + k_idx[:, None],
             mask=(k_idx[:, None] < k) & (offs_n[None, :] < n),
             other=0.0,
         )
         acc += tl.dot(a, b)
 
+    c_offsets = c_ptr + offs_m[:, None] * n + offs_n[None, :]
+    if beta != 0.0:
+        c_prev = tl.load(
+            c_offsets,
+            mask=(offs_m[:, None] < m) & (offs_n[None, :] < n),
+            other=0.0,
+        ).to(tl.float32)
+        acc = acc * alpha + c_prev * beta
+    else:
+        acc = acc * alpha
+
     tl.store(
-        c_ptr + offs_m[:, None] * stride_cm + offs_n[None, :] * stride_cn,
+        c_offsets,
         acc,
         mask=(offs_m[:, None] < m) & (offs_n[None, :] < n),
     )

@@ -102,28 +102,72 @@ The benchmark runner discovers them by convention:
   `cute_dsl`, `native_cuda`, or `reference`.
 - `name` comes from the filename without its extension.
 
-For Python DSL kernels, export a `run(inputs)` function:
+The GEMM problem is NT mode:
+
+```text
+C = alpha * A @ B.T + beta * C
+A: M x K, contiguous
+B: N x K, contiguous and logically transposed
+C: M x N, contiguous and preallocated by the benchmark runner
+```
+
+The default coefficients are `alpha=1.0` and `beta=0.0`, so empty output
+tensors are valid for the default benchmark. Native CUDA/CUTLASS/CuTe C++
+kernels can assume the contiguous NT layout and do not need generic stride
+parameters.
+
+For Python DSL kernels, export a `run(inputs, outputs)` function. The benchmark
+runner allocates `outputs.c` before timing, and the kernel writes into it:
 
 ```python
 # src/cutlass_examples/problems/gemm_hopper_bf16/kernels/triton/triton_v1.py
-def run(inputs):
-    ...
+def run(inputs, outputs):
+    # Write the MxN GEMM result into outputs.c.
+    return outputs.c
 ```
 
-For native CUDA/CuTe C++ kernels, put the source file under `kernels/native_cuda/`:
+For native CUDA, CUTLASS C++, or CuTe C++ kernels, use a paired source and
+runner file under `kernels/native_cuda/`:
 
 ```text
 src/cutlass_examples/problems/gemm_hopper_bf16/kernels/native_cuda/cutlass_wgmma_v0.cu
+src/cutlass_examples/problems/gemm_hopper_bf16/kernels/native_cuda/cutlass_wgmma_v0.py
 ```
 
-Native wrapping/compilation lives outside the kernel files in
-`src/cutlass_examples/problems/gemm_hopper_bf16/native_extension.py`.
+The `.py` file is your explicit user-controlled benchmark entrypoint:
+
+```python
+from ... import native_extension
+
+KERNEL_NAME = "cutlass_wgmma_v0"
+SOURCE = "kernels/native_cuda/cutlass_wgmma_v0.cu"
+EXTRA_CUDA_CFLAGS = ()
+EXTRA_LDFLAGS = ()
+EXTRA_INCLUDE_PATHS = ()
+
+
+def prepare(*, force_prepare: bool = False) -> None:
+    global kernel
+    ops = native_extension.load_kernel(KERNEL_NAME, force_prepare=force_prepare, source=SOURCE)
+    kernel = getattr(ops, KERNEL_NAME)
+
+
+def run(inputs, outputs):
+    return kernel(inputs.a, inputs.b, outputs.c, inputs.alpha, inputs.beta)
+```
+
+Shared native wrapping/compilation lives in
+`src/cutlass_examples/problems/gemm_hopper_bf16/native_extension.py`. It compiles
+the matching `.cu` file before timing, registers a `torch.ops` binding, adds the
+CUTLASS include paths, and includes per-kernel flags from the runner file. Native
+bindings receive `A`, `B`, preallocated `C`, `alpha`, and `beta`, so output
+allocation is not part of the timed kernel call.
 The repo includes minimal H100 examples for each supported kernel kind:
 
 - `triton_v0`: a simple Triton BF16 GEMM.
 - `gluon_smoke`: launches a tiny Gluon kernel, then participates in the GEMM benchmark path.
 - `cute_dsl_smoke`: launches a tiny CuTe DSL kernel, then participates in the GEMM benchmark path.
-- `cuda_inline_ptx_v0`: a naive native CUDA BF16 GEMM with an inline PTX marker.
+- `cuda_v0`: a naive native CUDA BF16 GEMM with an inline PTX marker.
 
 To compile and compare all examples on H100:
 
@@ -132,7 +176,7 @@ uv run modal run -m cutlass_examples.cli \
   --command benchmark \
   --problem gemm_hopper_bf16 \
   --gpu h100 \
-  --kernels cublas,triton_v0,gluon_smoke,cute_dsl_smoke,cuda_inline_ptx_v0 \
+  --kernels cublas,triton_v0,gluon_smoke,cute_dsl_smoke,cuda_v0 \
   --shapes 64,64,64 \
   --warmup-runs 1 \
   --bench-runs 2 \
@@ -177,41 +221,9 @@ uv run modal run -m cutlass_examples.cli \
 
 - Use `--gpu h100` for `gpu="H100!"`, which avoids Modal auto-upgrading H100
   benchmark runs to H200.
-- Use `--gpu b200` for Blackwell.
+- Use `--gpu b200` for Blackwell, "--gpu b200+" may upgrade to B300.
 - The Modal image installs Torch, Triton, Gluon via Triton, and
   `nvidia-cutlass-dsl[cu13]`.
-- Native build caches are split by architecture: `sm90` and `sm100`.
-- First runs may compile or JIT kernels; later runs should hit Modal volumes and
+- Native build caches are split by architecture: `sm90` and `sm100` and first runs may compile or
+  JIT kernels; later runs should hit Modal volumes and
   framework caches.
-
-## Project Structure
-
-```
-cutlass-examples/
-├── pyproject.toml
-├── uv.lock
-└── src/
-    └── cutlass_examples/
-        ├── __init__.py
-        ├── common/           # Your shared C++/CuTe headers
-        │   ├── __init__.py
-        │   ├── build_cache.py
-        │   ├── common.h
-        │   ├── benchmarking.py
-        │   ├── kernel_registry.py
-        │   ├── modal_utils.py
-        │   ├── runner.py
-        │   └── utils.py
-        ├── problems/
-        │   └── gemm_hopper_bf16/
-        │       ├── problem.py
-        │       ├── registry.py
-        │       ├── native_extension.py
-        │       └── kernels/
-        │           ├── reference/
-        │           ├── triton/
-        │           ├── gluon/
-        │           ├── cute_dsl/
-        │           └── native_cuda/
-        └── ...
-```

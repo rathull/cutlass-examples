@@ -29,7 +29,7 @@ def run_gemm_benchmark(
 ) -> RunRecord:
     import torch
 
-    from ..problems.gemm_hopper_bf16.problem import check_correctness, make_inputs, reference
+    from ..problems.gemm_hopper_bf16.problem import check_correctness, make_inputs, make_outputs, reference
 
     selected_specs = list(specs)
     prepare_kernels(selected_specs, force_prepare=force_prepare)
@@ -51,12 +51,19 @@ def run_gemm_benchmark(
                 dtype=config.dtype,
                 seed=config.seed + shape_idx + (repetition * len(config.shapes)),
             )
-            expected = reference(inputs) if config.check_correctness else None
             torch.cuda.synchronize()
 
             for spec in selected_specs:
                 fn = loaded[spec.name]
-                actual = fn(inputs)
+                correctness_outputs = make_outputs(shape, dtype=config.dtype)
+                expected = (
+                    reference(inputs, correctness_outputs)
+                    if config.check_correctness
+                    else None
+                )
+                actual = fn(inputs, correctness_outputs)
+                if actual is None:
+                    actual = correctness_outputs.c
                 torch.cuda.synchronize()
                 correctness = (
                     check_correctness(actual, expected, dtype=config.dtype)
@@ -66,8 +73,11 @@ def run_gemm_benchmark(
                 if print_results and not correctness.passed:
                     print(f"{spec.name} correctness failed: {correctness.error}")
 
+                timed_outputs = make_outputs(shape, dtype=config.dtype)
+
                 def timed_call() -> object:
-                    return fn(inputs)
+                    result = fn(inputs, timed_outputs)
+                    return timed_outputs.c if result is None else result
 
                 latency_ms = do_bench(
                     timed_call,

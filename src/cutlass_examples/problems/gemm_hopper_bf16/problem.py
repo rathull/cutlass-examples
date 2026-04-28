@@ -4,29 +4,46 @@ from dataclasses import dataclass
 
 from ...common.benchmarking import CorrectnessResult, ShapeSpec
 
+import torch
+
+DEFAULT_ALPHA = 1.0
+DEFAULT_BETA = 0.0
+
 
 @dataclass(frozen=True)
 class GemmInputs:
-    a: object
-    b: object
+    a: torch.Tensor
+    b: torch.Tensor
+    alpha: float = DEFAULT_ALPHA
+    beta: float = DEFAULT_BETA
+
+
+@dataclass(frozen=True)
+class GemmOutputs:
+    c: torch.Tensor
 
 
 def make_inputs(shape: ShapeSpec, *, dtype: str, seed: int) -> GemmInputs:
-    import torch
-
     torch_dtype = _torch_dtype(dtype)
     generator = torch.Generator(device="cuda")
     generator.manual_seed(seed)
     a = torch.randn(shape.m, shape.k, dtype=torch_dtype, device="cuda", generator=generator)
-    # NT layout: B is K-major in memory but N-major conceptually.
-    b = torch.randn(shape.n, shape.k, dtype=torch_dtype, device="cuda", generator=generator).T
+    # NT mode: A is MxK, B is stored as NxK and consumed as B.T.
+    b = torch.randn(shape.n, shape.k, dtype=torch_dtype, device="cuda", generator=generator)
     return GemmInputs(a=a, b=b)
 
 
-def reference(inputs: GemmInputs):
-    import torch
+def make_outputs(shape: ShapeSpec, *, dtype: str) -> GemmOutputs:
+    torch_dtype = _torch_dtype(dtype)
+    c = torch.empty(shape.m, shape.n, dtype=torch_dtype, device="cuda")
+    return GemmOutputs(c=c)
 
-    return torch.matmul(inputs.a, inputs.b)
+
+def reference(inputs: GemmInputs, outputs: GemmOutputs | None = None) -> torch.Tensor:
+    c = torch.empty(inputs.a.shape[0], inputs.b.shape[0], dtype=inputs.a.dtype, device=inputs.a.device)
+    if outputs is not None:
+        c.copy_(outputs.c)
+    return torch.addmm(c, inputs.a, inputs.b.T, beta=inputs.beta, alpha=inputs.alpha)
 
 
 def check_correctness(actual, expected, *, dtype: str) -> CorrectnessResult:

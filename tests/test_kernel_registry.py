@@ -61,7 +61,7 @@ def test_discovery_infers_name_kind_problem_and_target(tmp_path):
     problem_dir = tmp_path / "toy_problem"
     kernel = problem_dir / "kernels" / "triton" / "my_kernel.py"
     kernel.parent.mkdir(parents=True)
-    kernel.write_text("def run(inputs): return inputs\n")
+    kernel.write_text("def run(inputs, outputs): return outputs\n")
 
     specs = discover_problem_kernels(problem="toy_problem", problem_dir=problem_dir)
 
@@ -73,16 +73,37 @@ def test_discovery_infers_name_kind_problem_and_target(tmp_path):
     assert specs[0].source == "kernels/triton/my_kernel.py"
 
 
-def test_discovery_infers_native_source(tmp_path):
+def test_discovery_infers_native_runner_and_source(tmp_path):
     problem_dir = tmp_path / "toy_problem"
-    kernel = problem_dir / "kernels" / "native_cuda" / "cuda_inline_ptx_v0.cu"
-    kernel.parent.mkdir(parents=True)
-    kernel.write_text("__global__ void kernel() {}\n")
+    kernel_dir = problem_dir / "kernels" / "native_cuda"
+    runner = kernel_dir / "cuda_v0.py"
+    source = kernel_dir / "cuda_v0.cu"
+    kernel_dir.mkdir(parents=True)
+    runner.write_text("def run(inputs, outputs): return outputs\n")
+    source.write_text("__global__ void kernel() {}\n")
 
     specs = discover_problem_kernels(problem="toy_problem", problem_dir=problem_dir)
 
     assert len(specs) == 1
-    assert specs[0].name == "cuda_inline_ptx_v0"
+    assert specs[0].name == "cuda_v0"
     assert specs[0].kind == "native_cuda"
-    assert specs[0].source == "kernels/native_cuda/cuda_inline_ptx_v0.cu"
-    assert specs[0].metadata["source"] == "kernels/native_cuda/cuda_inline_ptx_v0.cu"
+    assert specs[0].target == (
+        "cutlass_examples.problems.toy_problem.kernels.native_cuda.cuda_v0:run"
+    )
+    assert specs[0].source == "kernels/native_cuda/cuda_v0.cu"
+    assert specs[0].metadata["path"] == "kernels/native_cuda/cuda_v0.py"
+    assert specs[0].metadata["source"] == "kernels/native_cuda/cuda_v0.cu"
+    assert specs[0].metadata["prepare"] == (
+        "cutlass_examples.problems.toy_problem.kernels.native_cuda.cuda_v0:prepare"
+    )
+
+
+def test_discovery_ignores_native_source_without_runner(tmp_path):
+    problem_dir = tmp_path / "toy_problem"
+    source = problem_dir / "kernels" / "native_cuda" / "cuda_v0.cu"
+    source.parent.mkdir(parents=True)
+    source.write_text("__global__ void kernel() {}\n")
+
+    specs = discover_problem_kernels(problem="toy_problem", problem_dir=problem_dir)
+
+    assert specs == []

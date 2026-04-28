@@ -195,7 +195,9 @@ def print_result(result: KernelResult) -> None:
     correctness = "ok" if result.correctness.passed else "failed"
     print(
         f"{result.kernel:24s} {result.shape.label:>16s} "
-        f"{result.stats.median_ms:9.4f} ms "
+        f"median={result.stats.median_ms:9.4f} ms "
+        f"mean={result.stats.mean_ms:9.4f} ms "
+        f"std={result.stats.std_ms:9.4f} ms "
         f"{result.stats.median_tflops:10.3f} TFLOPS "
         f"correct={correctness}"
     )
@@ -216,8 +218,11 @@ def print_comparison(results: list[KernelResult], *, baseline_kernel: str = "cub
         )
         baseline_ms = baseline.stats.median_ms if baseline else None
 
-        print(f"\nComparison for {shape_label} (median latency):")
-        header = f"{'kernel':24s} {'kind':12s} {'ms':>10s} {'TFLOPS':>10s}"
+        print(f"\nComparison for {shape_label} (latency in ms):")
+        header = (
+            f"{'kernel':24s} {'kind':12s} "
+            f"{'median':>10s} {'mean':>10s} {'std':>10s} {'TFLOPS':>10s}"
+        )
         if baseline_ms is not None:
             header += f" {'speedup':>10s}"
         print(header)
@@ -227,6 +232,8 @@ def print_comparison(results: list[KernelResult], *, baseline_kernel: str = "cub
             row = (
                 f"{result.kernel:24s} {result.kind:12s} "
                 f"{result.stats.median_ms:10.4f} "
+                f"{result.stats.mean_ms:10.4f} "
+                f"{result.stats.std_ms:10.4f} "
                 f"{result.stats.median_tflops:10.3f}"
             )
             if baseline_ms is not None:
