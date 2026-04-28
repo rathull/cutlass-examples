@@ -26,7 +26,7 @@ from .common.kernel_registry import load_target
 from .common.ptxas import parse_ptxas_log, print_ptxas_report, write_ptxas_artifacts
 from .common.runner import config_from_parts, run_gemm_benchmark
 from .common.utils import CUTLASS_VERSION, parse_bool, parse_quantiles, parse_shapes
-from .problems.gemm_hopper.registry import get_registry
+from .problems.gemm_hopper_bf16.registry import get_registry
 
 LOCAL_PACKAGE_DIR = Path(__file__).resolve().parent
 REMOTE_CUTLASS_PATH = Path("/opt/cutlass")
@@ -96,11 +96,10 @@ def _ptxas_b200(job: dict[str, Any]) -> dict[str, object]:
 @app.local_entrypoint()
 def main(
     command: str = "benchmark",
-    problem: str = "gemm_hopper",
+    problem: str = "gemm_hopper_bf16",
     gpu: str = "h100",
     kernels: str = "all",
-    tags: str = "",
-    exclude_tags: str = "",
+    kinds: str = "",
     shapes: str = "4096,4096,4096",
     dtype: str = "bf16",
     warmup_runs: int = DEFAULT_WARMUP_RUNS,
@@ -124,8 +123,7 @@ def main(
             problem=problem,
             gpu=normalized_gpu,
             kernels=kernels,
-            tags=tags,
-            exclude_tags=exclude_tags,
+            kinds=kinds,
             dtype=dtype,
         )
         return
@@ -134,8 +132,7 @@ def main(
             problem=problem,
             gpu=normalized_gpu,
             kernels=kernels,
-            tags=tags,
-            exclude_tags=exclude_tags,
+            kinds=kinds,
             shapes=shapes,
             dtype=dtype,
             warmup_runs=warmup_runs,
@@ -156,8 +153,7 @@ def main(
             problem=problem,
             gpu=normalized_gpu,
             kernels=kernels,
-            tags=tags,
-            exclude_tags=exclude_tags,
+            kinds=kinds,
             dtype=dtype,
             force_prepare=parse_bool(force_prepare),
         )
@@ -169,8 +165,7 @@ def main(
             problem=problem,
             gpu=normalized_gpu,
             kernels=kernels,
-            tags=tags,
-            exclude_tags=exclude_tags,
+            kinds=kinds,
             shapes=shapes,
             dtype=dtype,
             warmup_runs=warmup_runs,
@@ -230,13 +225,12 @@ def _run_remote_job(job: dict[str, Any]) -> dict[str, object]:
     specs = registry.resolve(
         problem=job["problem"],
         kernels=job["kernels"],
-        tags=job["tags"],
-        exclude_tags=job["exclude_tags"],
+        kinds=job["kinds"],
         gpu=job["gpu"],
         dtype=job["dtype"],
     )
-    if job["benchmark_ref"] and all(spec.name != "cuBLAS" for spec in specs):
-        specs.insert(0, registry.get("cuBLAS"))
+    if job["benchmark_ref"] and all(spec.name != "cublas" for spec in specs):
+        specs.insert(0, registry.get("cublas"))
 
     shapes = tuple(ShapeSpec.from_tuple(shape) for shape in parse_shapes(job["shapes"]))
     config = config_from_parts(
@@ -268,8 +262,7 @@ def _run_remote_ptxas(job: dict[str, Any]) -> dict[str, object]:
     specs = registry.resolve(
         problem=job["problem"],
         kernels=job["kernels"],
-        tags=job["tags"],
-        exclude_tags=job["exclude_tags"],
+        kinds=job["kinds"],
         gpu=job["gpu"],
         dtype=job["dtype"],
     )
@@ -346,21 +339,20 @@ def _print_kernels(
     problem: str,
     gpu: str,
     kernels: str,
-    tags: str,
-    exclude_tags: str,
+    kinds: str,
     dtype: str,
 ) -> None:
     specs = get_registry().resolve(
         problem=problem,
         kernels=kernels,
-        tags=tags,
-        exclude_tags=exclude_tags,
+        kinds=kinds,
         gpu=gpu,
         dtype=dtype,
     )
     print(f"Available kernels for problem={problem!r}, gpu={gpu!r}, dtype={dtype!r}:")
     for spec in specs:
-        print(f"  {spec.name:24s} {spec.kind:12s} tags={','.join(spec.tags)}")
+        path = spec.source or spec.metadata.get("path", "")
+        print(f"  {spec.name:24s} {spec.kind:12s} {path}")
 
 
 def _write_returned_record(record: dict[str, object], output_dir: Path) -> None:
@@ -503,7 +495,10 @@ def _record_from_dict(payload: dict[str, object]) -> RunRecord:
                     ),
                 ),
                 repetition=_as_int(raw["repetition"]),
-                tags=tuple(cast(list[str], raw["tags"])),
+                kernel_path=(
+                    None if raw.get("kernel_path") is None
+                    else str(raw["kernel_path"])
+                ),
             )
         )
     metadata = cast(dict[str, object], payload["metadata"])

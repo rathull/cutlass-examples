@@ -89,7 +89,7 @@ class KernelResult:
     stats: BenchmarkStats
     correctness: CorrectnessResult
     repetition: int = 0
-    tags: tuple[str, ...] = ()
+    kernel_path: str | None = None
 
     @property
     def row(self) -> dict[str, object]:
@@ -114,7 +114,7 @@ class KernelResult:
             "correct": self.correctness.passed,
             "max_abs": self.correctness.max_abs,
             "max_rel": self.correctness.max_rel,
-            "tags": ",".join(self.tags),
+            "kernel_path": self.kernel_path,
         }
 
 
@@ -201,7 +201,7 @@ def print_result(result: KernelResult) -> None:
     )
 
 
-def print_comparison(results: list[KernelResult], *, baseline_kernel: str = "cuBLAS") -> None:
+def print_comparison(results: list[KernelResult], *, baseline_kernel: str = "cublas") -> None:
     if not results:
         return
 

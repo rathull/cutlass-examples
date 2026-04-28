@@ -15,15 +15,15 @@ def test_write_artifacts(tmp_path):
     shape = ShapeSpec(m=128, n=128, k=128)
     record = RunRecord(
         config=BenchmarkConfig(
-            problem="gemm_hopper",
+            problem="gemm_hopper_bf16",
             gpu="H100!",
-            kernels=("cuBLAS",),
+            kernels=("cublas",),
             shapes=(shape,),
         ),
         results=[
             KernelResult(
-                problem="gemm_hopper",
-                kernel="cuBLAS",
+                problem="gemm_hopper_bf16",
+                kernel="cublas",
                 kind="reference",
                 gpu="H100!",
                 shape=shape,
@@ -41,7 +41,7 @@ def test_write_artifacts(tmp_path):
                     k=128,
                 ),
                 correctness=CorrectnessResult(passed=True, max_abs=0.0, max_rel=0.0),
-                tags=("reference",),
+                kernel_path="kernels/reference/cublas.py",
             )
         ],
         metadata={"device_name": "test-gpu"},
@@ -55,4 +55,5 @@ def test_write_artifacts(tmp_path):
 
     payload = json.loads((tmp_path / "results.json").read_text())
     assert payload["metadata"]["device_name"] == "test-gpu"
-    assert payload["results"][0]["kernel"] == "cuBLAS"
+    assert payload["results"][0]["kernel"] == "cublas"
+    assert payload["results"][0]["kernel_path"] == "kernels/reference/cublas.py"

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 
-def cublas(inputs):
+def run(inputs):
     import torch
 
     return torch.matmul(inputs.a, inputs.b)

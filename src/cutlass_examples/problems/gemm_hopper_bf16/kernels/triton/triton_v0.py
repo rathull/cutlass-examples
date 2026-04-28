@@ -4,11 +4,7 @@ import triton
 import triton.language as tl
 
 
-def prepare_triton(*, force_prepare: bool = False) -> None:
-    _ = force_prepare
-
-
-def matmul_v0(inputs, *, block_m: int = 32, block_n: int = 32, block_k: int = 32):
+def run(inputs, *, block_m: int = 32, block_n: int = 32, block_k: int = 32):
     import torch
 
     a = inputs.a

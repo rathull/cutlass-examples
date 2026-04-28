@@ -29,11 +29,14 @@ def run_gemm_benchmark(
 ) -> RunRecord:
     import torch
 
-    from ..problems.gemm_hopper.problem import check_correctness, make_inputs, reference
+    from ..problems.gemm_hopper_bf16.problem import check_correctness, make_inputs, reference
 
     selected_specs = list(specs)
     prepare_kernels(selected_specs, force_prepare=force_prepare)
-    loaded = {spec.name: load_target(spec.target) for spec in selected_specs}
+    loaded = {
+        spec.name: load_target(_require_target(spec))
+        for spec in selected_specs
+    }
     results: list[KernelResult] = []
 
     if print_results:
@@ -85,7 +88,7 @@ def run_gemm_benchmark(
                     ),
                     correctness=correctness,
                     repetition=repetition,
-                    tags=spec.tags,
+                    kernel_path=spec.source or spec.metadata.get("path"),
                 )
                 results.append(result)
                 if print_results:
@@ -114,6 +117,12 @@ def prepare_kernels(specs: Iterable[KernelSpec], *, force_prepare: bool = False)
     for target in sorted(prepare_targets):
         prepare = load_target(target)
         prepare(force_prepare=force_prepare)
+
+
+def _require_target(spec: KernelSpec) -> str:
+    if spec.target is None:
+        raise ValueError(f"Kernel {spec.name!r} does not have a callable target.")
+    return spec.target
 
 
 def config_from_parts(

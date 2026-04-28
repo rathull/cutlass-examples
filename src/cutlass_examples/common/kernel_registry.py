@@ -11,11 +11,11 @@ class KernelSpec:
     name: str
     problem: str
     kind: str
-    target: str
+    target: str | None = None
+    source: str | None = None
     supported_gpus: tuple[str, ...] = ("any",)
     supported_dtypes: tuple[str, ...] = ("bf16",)
     supported_layouts: tuple[str, ...] = ("nt",)
-    tags: tuple[str, ...] = ()
     description: str = ""
     metadata: dict[str, str] = field(default_factory=dict)
 
@@ -53,8 +53,7 @@ class KernelRegistry:
         *,
         problem: str,
         kernels: str,
-        tags: str = "",
-        exclude_tags: str = "",
+        kinds: str = "",
         gpu: str | None = None,
         dtype: str | None = None,
     ) -> list[KernelSpec]:
@@ -68,19 +67,9 @@ class KernelRegistry:
             if wrong_problem:
                 raise ValueError(f"Kernels do not belong to problem {problem!r}: {wrong_problem}")
 
-        required_tags = set(_parse_csv(tags, allow_empty=True))
-        if required_tags:
-            selected = [
-                spec for spec in selected
-                if required_tags.issubset(set(spec.tags))
-            ]
-
-        blocked_tags = set(_parse_csv(exclude_tags, allow_empty=True))
-        if blocked_tags:
-            selected = [
-                spec for spec in selected
-                if not blocked_tags.intersection(spec.tags)
-            ]
+        selected_kinds = set(_parse_csv(kinds, allow_empty=True))
+        if selected_kinds:
+            selected = [spec for spec in selected if spec.kind in selected_kinds]
 
         if gpu is not None:
             selected = [spec for spec in selected if spec.supports_gpu(gpu)]

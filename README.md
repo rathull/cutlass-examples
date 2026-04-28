@@ -28,7 +28,7 @@ List kernels runnable on a GPU:
 ```bash
 uv run modal run -m cutlass_examples.cli \
   --command list-kernels \
-  --problem gemm_hopper \
+  --problem gemm_hopper_bf16 \
   --gpu h100 \
   --kernels all
 ```
@@ -38,9 +38,9 @@ Run a single benchmark:
 ```bash
 uv run modal run -m cutlass_examples.cli \
   --command benchmark \
-  --problem gemm_hopper \
+  --problem gemm_hopper_bf16 \
   --gpu h100 \
-  --kernels cuBLAS,hopper_triton_v0 \
+  --kernels cublas,triton_v0 \
   --shapes 4096,4096,4096 \
   --dtype bf16 \
   --warmup-runs 50 \
@@ -53,26 +53,24 @@ Run a sweep. Use semicolons or whitespace to pass multiple shapes:
 ```bash
 uv run modal run -m cutlass_examples.cli \
   --command sweep \
-  --problem gemm_hopper \
+  --problem gemm_hopper_bf16 \
   --gpu h100 \
   --kernels all \
-  --tags hopper \
-  --exclude-tags smoke \
+  --kinds triton,cute_dsl \
   --shapes '1024,1024,1024;2048,2048,2048;4096,4096,4096' \
   --repetitions 3 \
   --parallel true \
   --out artifacts/runs/hopper-sweep
 ```
 
-Inspect native CUDA resource usage from `ptxas -v` for kernels that expose a
-`ptxas` inspection hook:
+Inspect native CUDA resource usage from `ptxas -v` for native kernels:
 
 ```bash
 uv run modal run -m cutlass_examples.cli \
   --command ptxas \
-  --problem gemm_hopper \
+  --problem gemm_hopper_bf16 \
   --gpu h100 \
-  --kernels <native_kernel_name> \
+  --kernels cutlass_wgmma_v0 \
   --force-prepare true \
   --out artifacts/ptxas/<run-name>
 ```
@@ -86,8 +84,7 @@ compiler log, and writes:
 - `ptxas.log`: raw compiler output
 
 The report includes registers/thread, static shared memory, stack frame bytes,
-spill stores/loads, constant memory, warnings, and the raw `ptxas` log. This
-only applies to native CUDA/CuTe C++ kernels with a registered `ptxas` hook.
+spill stores/loads, constant memory, warnings, and the raw `ptxas` log.
 
 Each run writes:
 
@@ -97,77 +94,62 @@ Each run writes:
 
 ## Adding Kernels
 
-Add kernels under `src/cutlass_examples/problems/gemm_hopper/backends/<kind>/`,
-then register them in `src/cutlass_examples/problems/gemm_hopper/registry.py`.
+Add kernels under `src/cutlass_examples/problems/gemm_hopper_bf16/kernels/<kind>/`.
+The benchmark runner discovers them by convention:
 
-The registry entry is the user-facing handle:
+- `problem` comes from the problem directory, e.g. `gemm_hopper_bf16`.
+- `kind` comes from the folder under `kernels/`, e.g. `triton`, `gluon`,
+  `cute_dsl`, `native_cuda`, or `reference`.
+- `name` comes from the filename without its extension.
+
+For Python DSL kernels, export a `run(inputs)` function:
 
 ```python
-KernelSpec(
-    name="hopper_triton_v1",
-    problem="gemm_hopper",
-    kind="triton",
-    target="cutlass_examples.problems.gemm_hopper.backends.triton.kernels:matmul_v1",
-    supported_gpus=("H100", "H200", "B200"),
-    tags=("hopper", "triton"),
-)
+# src/cutlass_examples/problems/gemm_hopper_bf16/kernels/triton/triton_v1.py
+def run(inputs):
+    ...
 ```
+
+For native CUDA/CuTe C++ kernels, put the source file under `kernels/native_cuda/`:
+
+```text
+src/cutlass_examples/problems/gemm_hopper_bf16/kernels/native_cuda/cutlass_wgmma_v0.cu
+```
+
+Native wrapping/compilation lives outside the kernel files in
+`src/cutlass_examples/problems/gemm_hopper_bf16/native_extension.py`.
 
 After that, run it by name:
 
 ```bash
 uv run modal run -m cutlass_examples.cli \
   --command benchmark \
-  --problem gemm_hopper \
+  --problem gemm_hopper_bf16 \
   --gpu h100 \
-  --kernels hopper_triton_v1 \
+  --kernels triton_v1 \
   --shapes 4096,4096,4096
 ```
 
-The CLI handles implementation details from `KernelSpec.kind`: native CUDA/CuTe
-C++ extensions, Triton, Gluon, CuTe DSL, and reference kernels all use the same
-benchmark path.
-
-## Tags
-
-Tags are labels attached to each `KernelSpec`. They let you select groups of
-kernels without remembering every kernel name.
-
-Examples:
-
-- `hopper`: kernels intended for Hopper/H100 or H200.
-- `blackwell`: kernels expected to run on B200.
-- `triton`, `gluon`, `cute_dsl`, `native_cuda`: implementation families.
-- `smoke`: dependency/runtime smoke kernels, useful for checking setup but not
-  meaningful for performance comparison.
-- `baseline` or `reference`: cuBLAS/reference kernels.
-
-Selection rules:
-
-- `--kernels all --tags hopper` selects kernels that have the `hopper` tag.
-- `--kernels all --tags hopper,triton` selects kernels that have both tags.
-- `--exclude-tags smoke` removes smoke kernels from the selected set.
-- Explicit names still work: `--kernels cuBLAS,hopper_triton_v0`.
-
-Useful examples:
+The CLI handles implementation details from `kind`: native CUDA/CuTe C++
+extensions, Triton, Gluon, CuTe DSL, and reference kernels all use the same
+benchmark path. Select groups of kernels with `--kinds`.
 
 ```bash
-# Run real Hopper kernels, but skip smoke placeholders.
+# Run all Triton kernels.
 uv run modal run -m cutlass_examples.cli \
   --command benchmark \
-  --problem gemm_hopper \
+  --problem gemm_hopper_bf16 \
   --gpu h100 \
   --kernels all \
-  --tags hopper \
-  --exclude-tags smoke
+  --kinds triton
 
 # See all Triton kernels available for H100.
 uv run modal run -m cutlass_examples.cli \
   --command list-kernels \
-  --problem gemm_hopper \
+  --problem gemm_hopper_bf16 \
   --gpu h100 \
   --kernels all \
-  --tags triton
+  --kinds triton
 ```
 
 ## Modal Notes
@@ -200,13 +182,15 @@ cutlass-examples/
         │   ├── runner.py
         │   └── utils.py
         ├── problems/
-        │   └── gemm_hopper/
+        │   └── gemm_hopper_bf16/
         │       ├── problem.py
         │       ├── registry.py
-        │       └── backends/
+        │       ├── native_extension.py
+        │       └── kernels/
+        │           ├── reference/
         │           ├── triton/
         │           ├── gluon/
         │           ├── cute_dsl/
-        │           └── reference/
+        │           └── native_cuda/
         └── ...
 ```
