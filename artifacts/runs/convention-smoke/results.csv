@@ -1,3 +1,0 @@
-problem,kernel,kind,gpu,shape,m,n,k,dtype,repetition,samples,median_ms,median_tflops,mean_ms,std_ms,min_ms,max_ms,correct,max_abs,max_rel,kernel_path
-gemm_hopper_bf16,cublas,reference,H100!,64x64x64,64,64,64,bf16,0,3,0.024927999824285507,0.02103209257444013,0.03026133341093858,0.00834696463681835,0.02380800060927868,0.042047999799251556,True,0.0,0.0,kernels/reference/cublas.py
-gemm_hopper_bf16,triton_v0,triton,H100!,64x64x64,64,64,64,bf16,0,3,0.04121600091457367,0.012720496612145011,0.046069333950678505,0.0077394302256354585,0.03999999910593033,0.056992001831531525,True,0.0,0.0,kernels/triton/triton_v0.py

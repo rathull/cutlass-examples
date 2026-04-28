@@ -282,3 +282,6 @@ third_party/
 *~
 #*#
 .#*
+
+# Benchmark artifacts
+artifacts/
