@@ -5,6 +5,13 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
+KERNEL_PARAMS_METADATA_KEY = "kernel_params"
+EXTRA_CUDA_CFLAGS_METADATA_KEY = "extra_cuda_cflags"
+RUNNER_FACTORY_METADATA_KEY = "runner_factory"
+PREPARE_FACTORY_METADATA_KEY = "prepare_factory"
+PTXAS_FACTORY_METADATA_KEY = "ptxas_factory"
+ALLOW_FAILURE_METADATA_KEY = "allow_failure"
+
 
 @dataclass(frozen=True)
 class KernelSpec:

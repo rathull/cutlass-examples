@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import modal
+from modal.exception import FunctionTimeoutError
 
 from .common.benchmarking import (
     DEFAULT_BENCH_RUNS,
@@ -22,7 +23,12 @@ from .common.modal_utils import (
     gpu_arch,
     normalize_gpu,
 )
-from .common.kernel_registry import load_target
+from .common.kernel_registry import (
+    KERNEL_PARAMS_METADATA_KEY,
+    PTXAS_FACTORY_METADATA_KEY,
+    load_target,
+)
+from .common.kernel_params import expand_parameterized_specs
 from .common.ptxas import parse_ptxas_log, print_ptxas_report, write_ptxas_artifacts
 from .common.runner import config_from_parts, run_gemm_benchmark
 from .common.utils import CUTLASS_VERSION, parse_bool, parse_quantiles, parse_shapes
@@ -31,6 +37,8 @@ from .problems.gemm_hopper_bf16.registry import get_registry
 LOCAL_PACKAGE_DIR = Path(__file__).resolve().parent
 REMOTE_CUTLASS_PATH = Path("/opt/cutlass")
 DEFAULT_OUTPUT_DIR = "artifacts/runs/latest"
+BENCHMARK_TIMEOUT_SECONDS = 30 * 60
+PTXAS_TIMEOUT_SECONDS = 20 * 60
 
 image = build_kernel_image(
     local_mounts=[(LOCAL_PACKAGE_DIR, REMOTE_PACKAGE_DIR)],
@@ -48,6 +56,7 @@ artifacts_volume = modal.Volume.from_name("kernel-bench-artifacts", create_if_mi
 
 @app.function(
     gpu="H100!",
+    timeout=BENCHMARK_TIMEOUT_SECONDS,
     volumes={str(BUILD_CACHE_DIR): build_cache_sm90, str(ARTIFACTS_DIR): artifacts_volume},
 )
 def _doctor_h100() -> dict[str, object]:
@@ -63,6 +72,7 @@ def _doctor_b200() -> dict[str, object]:
 
 @app.function(
     gpu="H100!",
+    timeout=PTXAS_TIMEOUT_SECONDS,
     volumes={str(BUILD_CACHE_DIR): build_cache_sm90, str(ARTIFACTS_DIR): artifacts_volume},
 )
 def _benchmark_h100(job: dict[str, Any]) -> dict[str, object]:
@@ -79,6 +89,7 @@ def _ptxas_h100(job: dict[str, Any]) -> dict[str, object]:
 
 @app.function(
     gpu="B200",
+    timeout=BENCHMARK_TIMEOUT_SECONDS,
     volumes={str(BUILD_CACHE_DIR): build_cache_sm100, str(ARTIFACTS_DIR): artifacts_volume},
 )
 def _benchmark_b200(job: dict[str, Any]) -> dict[str, object]:
@@ -87,6 +98,7 @@ def _benchmark_b200(job: dict[str, Any]) -> dict[str, object]:
 
 @app.function(
     gpu="B200",
+    timeout=PTXAS_TIMEOUT_SECONDS,
     volumes={str(BUILD_CACHE_DIR): build_cache_sm100, str(ARTIFACTS_DIR): artifacts_volume},
 )
 def _ptxas_b200(job: dict[str, Any]) -> dict[str, object]:
@@ -102,6 +114,11 @@ def main(
     kinds: str = "",
     shapes: str = "4096,4096,4096",
     dtype: str = "bf16",
+    bm: str = "",
+    bn: str = "",
+    bk: str = "",
+    tm: str = "",
+    tn: str = "",
     warmup_runs: int = DEFAULT_WARMUP_RUNS,
     bench_runs: int = DEFAULT_BENCH_RUNS,
     quantiles: str = DEFAULT_QUANTILES,
@@ -114,6 +131,7 @@ def main(
     out: str = DEFAULT_OUTPUT_DIR,
 ) -> None:
     normalized_gpu = normalize_gpu(gpu)
+    kernel_args = _kernel_args(BM=bm, BN=bn, BK=bk, TM=tm, TN=tn)
 
     if command == "doctor":
         _print_doctor(_doctor_fn(normalized_gpu).remote())
@@ -123,6 +141,7 @@ def main(
             problem=problem,
             gpu=normalized_gpu,
             kernels=kernels,
+            kernel_args=kernel_args,
             kinds=kinds,
             dtype=dtype,
         )
@@ -132,6 +151,7 @@ def main(
             problem=problem,
             gpu=normalized_gpu,
             kernels=kernels,
+            kernel_args=kernel_args,
             kinds=kinds,
             shapes=shapes,
             dtype=dtype,
@@ -145,7 +165,16 @@ def main(
             force_prepare=parse_bool(force_prepare),
             print_results=True,
         )
-        record = _benchmark_fn(normalized_gpu).remote(job)
+        try:
+            record = _benchmark_fn(normalized_gpu).remote(job)
+        except FunctionTimeoutError as exc:
+            _write_timeout_artifact(
+                error=exc,
+                output_dir=Path(out),
+                job=job,
+                timeout_seconds=BENCHMARK_TIMEOUT_SECONDS,
+            )
+            return
         _write_returned_record(record, Path(out))
         return
     if command == "ptxas":
@@ -153,11 +182,21 @@ def main(
             problem=problem,
             gpu=normalized_gpu,
             kernels=kernels,
+            kernel_args=kernel_args,
             kinds=kinds,
             dtype=dtype,
             force_prepare=parse_bool(force_prepare),
         )
-        report = _ptxas_fn(normalized_gpu).remote(job)
+        try:
+            report = _ptxas_fn(normalized_gpu).remote(job)
+        except FunctionTimeoutError as exc:
+            _write_timeout_artifact(
+                error=exc,
+                output_dir=Path(out),
+                job=job,
+                timeout_seconds=PTXAS_TIMEOUT_SECONDS,
+            )
+            return
         _write_returned_ptxas(report, Path(out))
         return
     if command == "sweep":
@@ -165,6 +204,7 @@ def main(
             problem=problem,
             gpu=normalized_gpu,
             kernels=kernels,
+            kernel_args=kernel_args,
             kinds=kinds,
             shapes=shapes,
             dtype=dtype,
@@ -178,7 +218,20 @@ def main(
             force_prepare=parse_bool(force_prepare),
         )
         fn = _benchmark_fn(normalized_gpu)
-        records = list(fn.map(jobs)) if parse_bool(parallel) else [fn.remote(job) for job in jobs]
+        try:
+            records = (
+                list(fn.map(jobs))
+                if parse_bool(parallel)
+                else [fn.remote(job) for job in jobs]
+            )
+        except FunctionTimeoutError as exc:
+            _write_timeout_artifact(
+                error=exc,
+                output_dir=Path(out),
+                job={"jobs": jobs},
+                timeout_seconds=BENCHMARK_TIMEOUT_SECONDS,
+            )
+            return
         _write_aggregate(records, Path(out))
         return
 
@@ -222,13 +275,7 @@ def _doctor() -> dict[str, object]:
 
 def _run_remote_job(job: dict[str, Any]) -> dict[str, object]:
     registry = get_registry()
-    specs = registry.resolve(
-        problem=job["problem"],
-        kernels=job["kernels"],
-        kinds=job["kinds"],
-        gpu=job["gpu"],
-        dtype=job["dtype"],
-    )
+    specs = _resolve_specs(registry, job)
     if job["benchmark_ref"] and all(spec.name != "cublas" for spec in specs):
         specs.insert(0, registry.get("cublas"))
 
@@ -259,25 +306,24 @@ def _run_remote_job(job: dict[str, Any]) -> dict[str, object]:
 
 def _run_remote_ptxas(job: dict[str, Any]) -> dict[str, object]:
     registry = get_registry()
-    specs = registry.resolve(
-        problem=job["problem"],
-        kernels=job["kernels"],
-        kinds=job["kinds"],
-        gpu=job["gpu"],
-        dtype=job["dtype"],
-    )
-    ptxas_targets = sorted({
-        spec.metadata["ptxas"]
+    specs = _resolve_specs(registry, job)
+    ptxas_inputs = [
+        spec
         for spec in specs
-        if "ptxas" in spec.metadata
-    })
-    if not ptxas_targets:
+        if "ptxas" in spec.metadata or PTXAS_FACTORY_METADATA_KEY in spec.metadata
+    ]
+    if not ptxas_inputs:
         names = ", ".join(spec.name for spec in specs)
         raise ValueError(f"No selected kernels expose ptxas inspection hooks: {names}")
 
     logs = []
-    for target in ptxas_targets:
-        inspect = load_target(target)
+    for spec in sorted(ptxas_inputs, key=lambda item: item.name):
+        factory_target = spec.metadata.get(PTXAS_FACTORY_METADATA_KEY)
+        if factory_target is not None:
+            inspect = load_target(factory_target)
+            logs.append(inspect(spec, force_prepare=job["force_prepare"]))
+            continue
+        inspect = load_target(spec.metadata["ptxas"])
         logs.append(inspect(force_prepare=job["force_prepare"]))
 
     report = parse_ptxas_log("\n".join(logs))
@@ -299,6 +345,24 @@ def _make_sweep_jobs(**kwargs: Any) -> list[dict[str, Any]]:
         job["print_results"] = False
         jobs.append(job)
     return jobs
+
+
+def _resolve_specs(registry, job: dict[str, Any]):
+    specs = registry.resolve(
+        problem=job["problem"],
+        kernels=job["kernels"],
+        kinds=job["kinds"],
+        gpu=job["gpu"],
+        dtype=job["dtype"],
+    )
+    return expand_parameterized_specs(
+        specs,
+        cast(dict[str, str], job.get("kernel_args", {})),
+    )
+
+
+def _kernel_args(**kwargs: str) -> dict[str, str]:
+    return {key: value for key, value in kwargs.items() if value.strip()}
 
 
 def _benchmark_fn(gpu: str):
@@ -339,26 +403,57 @@ def _print_kernels(
     problem: str,
     gpu: str,
     kernels: str,
+    kernel_args: dict[str, str],
     kinds: str,
     dtype: str,
 ) -> None:
-    specs = get_registry().resolve(
-        problem=problem,
-        kernels=kernels,
-        kinds=kinds,
-        gpu=gpu,
-        dtype=dtype,
+    specs = expand_parameterized_specs(
+        get_registry().resolve(
+            problem=problem,
+            kernels=kernels,
+            kinds=kinds,
+            gpu=gpu,
+            dtype=dtype,
+        ),
+        kernel_args,
     )
     print(f"Available kernels for problem={problem!r}, gpu={gpu!r}, dtype={dtype!r}:")
     for spec in specs:
         path = spec.source or spec.metadata.get("path", "")
-        print(f"  {spec.name:24s} {spec.kind:12s} {path}")
+        params = spec.metadata.get(KERNEL_PARAMS_METADATA_KEY, "")
+        print(f"  {spec.name:48s} {spec.kind:12s} {path} {params}")
 
 
 def _write_returned_record(record: dict[str, object], output_dir: Path) -> None:
     run_record = _record_from_dict(record)
     write_artifacts(run_record, output_dir)
     print(f"\nWrote artifacts to {output_dir}")
+
+
+def _write_timeout_artifact(
+    *,
+    error: FunctionTimeoutError,
+    output_dir: Path,
+    job: dict[str, object],
+    timeout_seconds: int,
+) -> None:
+    import json
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "status": "timeout",
+        "timeout_seconds": timeout_seconds,
+        "error": str(error),
+        "job": job,
+    }
+    (output_dir / "timeout.json").write_text(json.dumps(payload, indent=2) + "\n")
+    (output_dir / "timeout.txt").write_text(
+        f"Benchmark timed out after {timeout_seconds} seconds.\n{error}\n"
+    )
+    print(
+        f"\nBenchmark timed out after {timeout_seconds} seconds. "
+        f"Wrote timeout details to {output_dir}"
+    )
 
 
 def _write_returned_ptxas(report: dict[str, object], output_dir: Path) -> None:
@@ -498,6 +593,10 @@ def _record_from_dict(payload: dict[str, object]) -> RunRecord:
                 kernel_path=(
                     None if raw.get("kernel_path") is None
                     else str(raw["kernel_path"])
+                ),
+                kernel_params=(
+                    None if raw.get("kernel_params") is None
+                    else str(raw["kernel_params"])
                 ),
             )
         )

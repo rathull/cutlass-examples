@@ -1,8 +1,11 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+import json
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import NamedTuple
+
+from ...common.kernel_registry import EXTRA_CUDA_CFLAGS_METADATA_KEY, KernelSpec
 
 BASE_MODULE_NAME = "gemm_hopper_bf16_native"
 REMOTE_PROBLEM_DIR = Path("/opt/cutlass_examples/problems/gemm_hopper_bf16")
@@ -10,6 +13,7 @@ REMOTE_KERNEL_DIR = REMOTE_PROBLEM_DIR / "kernels" / "native_cuda"
 REMOTE_CUTLASS_DIR = Path("/opt/cutlass")
 BUILD_ROOT = Path("/cache/build") / BASE_MODULE_NAME
 _ops_cache: dict[tuple[str, str], object] = {}
+_variant_kernels: dict[str, Callable[..., object]] = {}
 
 
 class NativeKernel(NamedTuple):
@@ -66,7 +70,10 @@ def load_kernel(
     ]
     source_hash = compute_source_hash(
         sources=[binding_source, *sources],
-        include_files=[path for path in include_paths if path.is_file()],
+        include_files=[
+            *_native_cuda_include_files(),
+            *[path for path in include_paths if path.is_file()],
+        ],
         cuda_cflags=cache_cuda_cflags,
         ldflags=ldflags,
         torch_version=torch.__version__,
@@ -117,6 +124,62 @@ def load_kernel(
     return ops
 
 
+def prepare_variant(spec: KernelSpec, *, force_prepare: bool = False) -> None:
+    _load_variant(spec, force_prepare=force_prepare)
+
+
+def make_variant_runner(spec: KernelSpec):
+    def run_variant(inputs, outputs):
+        kernel = _load_variant(spec)
+        return kernel(inputs.a, inputs.b, outputs.c, inputs.alpha, inputs.beta)
+
+    return run_variant
+
+
+def inspect_ptxas_variant(spec: KernelSpec, *, force_prepare: bool = False) -> str:
+    compiled = load_kernel(
+        spec.name,
+        force_prepare=force_prepare,
+        return_build_log=True,
+        source=_require_spec_source(spec),
+        extra_cuda_cflags=_extra_cuda_cflags(spec),
+    )
+    assert isinstance(compiled, NativeKernel)
+    return compiled.build_log
+
+
+def _load_variant(spec: KernelSpec, *, force_prepare: bool = False) -> Callable[..., object]:
+    if spec.name in _variant_kernels and not force_prepare:
+        return _variant_kernels[spec.name]
+
+    ops = load_kernel(
+        spec.name,
+        force_prepare=force_prepare,
+        source=_require_spec_source(spec),
+        extra_cuda_cflags=_extra_cuda_cflags(spec),
+    )
+    loaded = getattr(ops, spec.name)
+    _variant_kernels[spec.name] = loaded
+    return loaded
+
+
+def _require_spec_source(spec: KernelSpec) -> str:
+    source = spec.source or spec.metadata.get("source")
+    if source is None:
+        raise ValueError(f"Native kernel variant {spec.name!r} does not have a source.")
+    return source
+
+
+def _extra_cuda_cflags(spec: KernelSpec) -> tuple[str, ...]:
+    raw = spec.metadata.get(EXTRA_CUDA_CFLAGS_METADATA_KEY)
+    if raw is None:
+        return ()
+    parsed = json.loads(raw)
+    if not isinstance(parsed, list) or not all(isinstance(item, str) for item in parsed):
+        raise ValueError(f"Invalid extra CUDA flags metadata for {spec.name!r}: {raw!r}")
+    return tuple(parsed)
+
+
 def _resolve_source(name: str, source: str | Path | None) -> Path:
     if source is not None:
         return _resolve_path(source)
@@ -140,6 +203,21 @@ def _default_include_paths() -> list[Path]:
         REMOTE_CUTLASS_DIR / "tools" / "util" / "include",
         REMOTE_CUTLASS_DIR / "examples" / "common",
     ]
+
+
+def _native_cuda_include_files() -> list[Path]:
+    if not REMOTE_KERNEL_DIR.exists():
+        return []
+
+    header_suffixes = {".cuh", ".h", ".hpp"}
+    return sorted(
+        (
+            path
+            for path in REMOTE_KERNEL_DIR.rglob("*")
+            if path.is_file() and path.suffix in header_suffixes
+        ),
+        key=lambda path: path.as_posix(),
+    )
 
 
 def _module_name(name: str) -> str:

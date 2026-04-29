@@ -90,6 +90,7 @@ class KernelResult:
     correctness: CorrectnessResult
     repetition: int = 0
     kernel_path: str | None = None
+    kernel_params: str | None = None
 
     @property
     def row(self) -> dict[str, object]:
@@ -115,6 +116,7 @@ class KernelResult:
             "max_abs": self.correctness.max_abs,
             "max_rel": self.correctness.max_rel,
             "kernel_path": self.kernel_path,
+            "kernel_params": self.kernel_params,
         }
 
 

@@ -1,25 +1,15 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import cast
 
 from ... import native_extension
 
-KERNEL_NAME = "cuda_v1_smem_tiling"
-SOURCE = "kernels/native_cuda/cuda_v1_smem_tiling.cu"
+KERNEL_NAME = "cuda_v2_mma_async"
+SOURCE = "kernels/native_cuda/cuda_v2_mma_async.cu"
 EXTRA_CUDA_CFLAGS: tuple[str, ...] = ()
 EXTRA_LDFLAGS: tuple[str, ...] = ()
 EXTRA_INCLUDE_PATHS: tuple[str, ...] = ()
 kernel = None
-
-
-@dataclass(frozen=True)
-class Params:
-    BM: int = 128
-    BN: int = 128
-    BK: int = 16
-    TM: int = 8
-    TN: int = 8
 
 
 def prepare(*, force_prepare: bool = False) -> None:
@@ -50,5 +40,4 @@ def inspect_ptxas(*, force_prepare: bool = False) -> str:
 
 
 def run(inputs, outputs):
-    # Ensure prepare() is called before run()
     return kernel(inputs.a, inputs.b, outputs.c, inputs.alpha, inputs.beta)

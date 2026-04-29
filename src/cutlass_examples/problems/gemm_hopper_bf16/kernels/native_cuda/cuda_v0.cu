@@ -5,7 +5,7 @@ constexpr int BLOCK_SIZE_M = 16;
 constexpr int BLOCK_SIZE_N = 16;
 
 __launch_bounds__(BLOCK_SIZE_M * BLOCK_SIZE_N) // TODO: __launch_bounds__(maxThreadsPerBlock, minBlocksPerMultiprocessor)
-__global__ void cuda_v1_smem_tiling_kernel(
+__global__ void cuda_v0_kernel(
     const nv_bfloat16* __restrict__ A,
     const nv_bfloat16* __restrict__ B,
     nv_bfloat16* __restrict__ C,
@@ -36,7 +36,7 @@ __global__ void cuda_v1_smem_tiling_kernel(
     }
 }
 
-extern "C" void cuda_v1_smem_tiling(
+extern "C" void cuda_v0(
     const nv_bfloat16* __restrict__ A,
     const nv_bfloat16* __restrict__ B,
     nv_bfloat16* __restrict__ C,
@@ -48,7 +48,7 @@ extern "C" void cuda_v1_smem_tiling(
         (N + BLOCK_SIZE_N - 1) / BLOCK_SIZE_N,
         (M + BLOCK_SIZE_M - 1) / BLOCK_SIZE_M
     );
-    cuda_v1_smem_tiling_kernel<<<grid, block>>>(
+    cuda_v0_kernel<<<grid, block>>>(
         A, B, C, M, N, K, alpha, beta
     );
 }

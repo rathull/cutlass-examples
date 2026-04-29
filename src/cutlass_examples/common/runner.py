@@ -17,6 +17,12 @@ from .benchmarking import (
     write_artifacts,
 )
 from .kernel_registry import KernelSpec, load_target
+from .kernel_registry import (
+    ALLOW_FAILURE_METADATA_KEY,
+    KERNEL_PARAMS_METADATA_KEY,
+    PREPARE_FACTORY_METADATA_KEY,
+    RUNNER_FACTORY_METADATA_KEY,
+)
 
 
 def run_gemm_benchmark(
@@ -32,11 +38,8 @@ def run_gemm_benchmark(
     from ..problems.gemm_hopper_bf16.problem import check_correctness, make_inputs, make_outputs, reference
 
     selected_specs = list(specs)
-    prepare_kernels(selected_specs, force_prepare=force_prepare)
-    loaded = {
-        spec.name: load_target(_require_target(spec))
-        for spec in selected_specs
-    }
+    prepare_errors = prepare_kernels(selected_specs, force_prepare=force_prepare)
+    loaded = {spec.name: _load_runner(spec) for spec in selected_specs}
     results: list[KernelResult] = []
 
     if print_results:
@@ -54,6 +57,19 @@ def run_gemm_benchmark(
             torch.cuda.synchronize()
 
             for spec in selected_specs:
+                if spec.name in prepare_errors:
+                    result = _failed_result(
+                        spec=spec,
+                        config=config,
+                        shape=shape,
+                        repetition=repetition,
+                        error=f"prepare failed: {prepare_errors[spec.name]}",
+                    )
+                    results.append(result)
+                    if print_results:
+                        print(f"{spec.name} prepare failed: {prepare_errors[spec.name]}")
+                    continue
+
                 fn = loaded[spec.name]
                 correctness_outputs = make_outputs(shape, dtype=config.dtype)
                 expected = (
@@ -61,7 +77,22 @@ def run_gemm_benchmark(
                     if config.check_correctness
                     else None
                 )
-                actual = fn(inputs, correctness_outputs)
+                try:
+                    actual = fn(inputs, correctness_outputs)
+                except Exception as exc:
+                    if not _allows_failure(spec):
+                        raise
+                    result = _failed_result(
+                        spec=spec,
+                        config=config,
+                        shape=shape,
+                        repetition=repetition,
+                        error=f"run failed: {exc}",
+                    )
+                    results.append(result)
+                    if print_results:
+                        print(f"{spec.name} run failed: {exc}")
+                    continue
                 if actual is None:
                     actual = correctness_outputs.c
                 torch.cuda.synchronize()
@@ -79,11 +110,26 @@ def run_gemm_benchmark(
                     result = fn(inputs, timed_outputs)
                     return timed_outputs.c if result is None else result
 
-                latency_ms = do_bench(
-                    timed_call,
-                    warmup_runs=config.warmup_runs,
-                    bench_runs=config.bench_runs,
-                )
+                try:
+                    latency_ms = do_bench(
+                        timed_call,
+                        warmup_runs=config.warmup_runs,
+                        bench_runs=config.bench_runs,
+                    )
+                except Exception as exc:
+                    if not _allows_failure(spec):
+                        raise
+                    result = _failed_result(
+                        spec=spec,
+                        config=config,
+                        shape=shape,
+                        repetition=repetition,
+                        error=f"benchmark failed: {exc}",
+                    )
+                    results.append(result)
+                    if print_results:
+                        print(f"{spec.name} benchmark failed: {exc}")
+                    continue
                 result = KernelResult(
                     problem=config.problem,
                     kernel=spec.name,
@@ -100,6 +146,7 @@ def run_gemm_benchmark(
                     repetition=repetition,
                     kernel_path=spec.source or spec.metadata.get("path"),
                 )
+                _set_kernel_params(result, spec)
                 results.append(result)
                 if print_results:
                     print_result(result)
@@ -118,15 +165,73 @@ def run_gemm_benchmark(
     return record
 
 
-def prepare_kernels(specs: Iterable[KernelSpec], *, force_prepare: bool = False) -> None:
-    prepare_targets = {
+def prepare_kernels(specs: Iterable[KernelSpec], *, force_prepare: bool = False) -> dict[str, str]:
+    errors: dict[str, str] = {}
+    prepare_targets = sorted({
         spec.metadata["prepare"]
         for spec in specs
         if "prepare" in spec.metadata
-    }
-    for target in sorted(prepare_targets):
+    })
+    for target in prepare_targets:
         prepare = load_target(target)
         prepare(force_prepare=force_prepare)
+
+    for spec in sorted(specs, key=lambda item: item.name):
+        prepare_factory_target = spec.metadata.get(PREPARE_FACTORY_METADATA_KEY)
+        if prepare_factory_target is None:
+            continue
+        prepare_factory = load_target(prepare_factory_target)
+        try:
+            prepare_factory(spec, force_prepare=force_prepare)
+        except Exception as exc:
+            if _allows_failure(spec):
+                errors[spec.name] = str(exc)
+                continue
+            raise
+    return errors
+
+
+def _load_runner(spec: KernelSpec):
+    runner_factory_target = spec.metadata.get(RUNNER_FACTORY_METADATA_KEY)
+    if runner_factory_target is not None:
+        runner_factory = load_target(runner_factory_target)
+        return runner_factory(spec)
+    return load_target(_require_target(spec))
+
+
+def _set_kernel_params(result: KernelResult, spec: KernelSpec) -> None:
+    kernel_params = spec.metadata.get(KERNEL_PARAMS_METADATA_KEY)
+    if kernel_params is not None:
+        object.__setattr__(result, "kernel_params", kernel_params)
+
+
+def _allows_failure(spec: KernelSpec) -> bool:
+    return spec.metadata.get(ALLOW_FAILURE_METADATA_KEY) == "true"
+
+
+def _failed_result(
+    *,
+    spec: KernelSpec,
+    config: BenchmarkConfig,
+    shape: ShapeSpec,
+    repetition: int,
+    error: str,
+) -> KernelResult:
+    result = KernelResult(
+        problem=config.problem,
+        kernel=spec.name,
+        kind=spec.kind,
+        gpu=config.gpu,
+        shape=shape,
+        dtype=config.dtype,
+        stats=summarize_latency([float("nan")], shape=shape, quantiles=config.quantiles),
+        correctness=CorrectnessResult(passed=False, error=error),
+        repetition=repetition,
+        kernel_path=spec.source or spec.metadata.get("path"),
+    )
+    object.__setattr__(result.stats, "samples", 0)
+    _set_kernel_params(result, spec)
+    return result
 
 
 def _require_target(spec: KernelSpec) -> str:

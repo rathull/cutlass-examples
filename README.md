@@ -63,6 +63,33 @@ uv run modal run -m cutlass_examples.cli \
   --out artifacts/runs/hopper-sweep
 ```
 
+Sweep native CUDA/PTX compile-time parameters with direct kernel parameter
+flags. The base kernel's `.py` runner declares which parameters it supports;
+for `cuda_v1_smem_tiling`, each cartesian-product configuration is compiled as
+its own ephemeral kernel variant:
+
+```bash
+uv run modal run -m cutlass_examples.cli \
+  --command benchmark \
+  --problem gemm_hopper_bf16 \
+  --gpu h100 \
+  --kernels cuda_v1_smem_tiling \
+  --BM 64,128 \
+  --BN 128 \
+  --BK 16,32 \
+  --TM 8 \
+  --TN 8 \
+  --shapes 4096,4096,4096 \
+  --force-prepare true \
+  --out artifacts/runs/hopper-native-param-sweep
+```
+
+For C++ kernels, keep tile sizes, register tile sizes, pipeline stages, PTX
+instruction variants, and CUTLASS/CuTe template shapes as compile-time values.
+Native sweep variants pass values as `nvcc` defines like `-DBM=128` and
+`-DTM=8`; the `.cu` file provides defaults for those macros. Runtime arguments
+should remain problem data only: pointers, `M`, `N`, `K`, `alpha`, and `beta`.
+
 Inspect native CUDA resource usage from `ptxas -v` for native kernels:
 
 ```bash
