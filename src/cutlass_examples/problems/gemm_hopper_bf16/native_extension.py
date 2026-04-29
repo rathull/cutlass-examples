@@ -44,7 +44,7 @@ def load_kernel(
 
     assert torch.version.cuda
     gpu_name = torch.cuda.get_device_name()
-    arch = "90" if "H100" in gpu_name or "H200" in gpu_name else GPU_TO_ARCH.get("B200", "100")
+    arch = "90a" if "H100" in gpu_name or "H200" in gpu_name else GPU_TO_ARCH.get("B200", "100a")
 
     source_path = _resolve_source(name, source)
     sources = [source_path, *[_resolve_path(path) for path in extra_sources]]

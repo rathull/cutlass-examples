@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 GPU_TO_ARCH = {
-    "H100": "90",
-    "H200": "90",
-    "B200": "100",
+    "H100": "90a",
+    "H200": "90a",
+    "B200": "100a",
 }
 
 CUTLASS_VERSION = "4.4.2"
