@@ -7,36 +7,20 @@
 //                 TMA UTILITIES
 // ==================================================
 // TODO: which of the below assmelby utils have a CUDA wrapped version like in cuda::barrier?
-// First num_consumer_threads threads issue WGMMAs, the last num_producer_threads threads issue TMAs
-// TODO: need to figure out how to handle case where dimensions are not divisble by 64
-constexpr int num_consumer_groups = (BM + 63) / 64;
-constexpr int num_consumer_threads = 128 * num_consumer_groups;
-constexpr int num_producer_threads = 32;
-constexpr int wgmma_m = 64;
-constexpr int wgmma_n = BN;
-constexpr int wgmma_k = 16;
-
-static_assert(BM % 64 == 0, "BM must be divisible by 64");
-static_assert(BN % 8 == 0, "BN must be divisible by 8");
-static_assert(NUM_THREADS <= 1024, "CTA cannot have more than 1024 threads");
-static_assert(NUM_STAGES >= 2, "Need at least 2 pipeline stages.");
-static_assert(2 * NUM_STAGES * (BM * BK + BN * BK) + 2 * NUM_STAGES <= 227 * 1024, "SMEM per CTA is too large.");
-static_assert(BM * BN / 4 <= 256 * 1024, "Accumulator registers per CTA is too large.");
 
 // Generic pointer -> SMEM 32-bit offset
 __device__ __forceinline__ uint32_t cvta_to_shared_u32(const void* ptr) {
-    uint32_t addr;
-    asm volatile("cvta.to.shared.u64 %0, %1;\n\t"
-                 "cvt.u32.u64 %0, %0;"
-                 : "=r"(addr) : "l"(ptr));
-    return addr;
+    uint64_t addr;
+    asm volatile("cvta.to.shared.u64 %0, %1;\n" : "=l"(addr) : "l"(ptr));
+    return static_cast<uint32_t>(addr);
 }
 
 // Initialize mbarrier in SMEM with given arrival count
 __device__ __forceinline__ void mbarrier_init(uint64_t* bar, uint32_t count) {
     uint32_t bar_addr = cvta_to_shared_u32(bar);
     asm volatile("mbarrier.init.shared::cta.b64 [%0], %1;\n"
-                 :: "r"(bar_addr), "r"(count));
+                 :: "r"(bar_addr), "r"(count)
+                 : "memory");
 }
 
 // Make mbarrier visible to async proxy
@@ -45,18 +29,24 @@ __device__ __forceinline__ void fence_barrier_init() {
     asm volatile("fence.mbarrier_init.release.cluster;" ::: "memory");
 }
 
+__device__ __forceinline__ void fence_proxy_async_shared_cta() {
+    asm volatile("fence.proxy.async.shared::cta;\n" ::: "memory");
+}
+
 // Arrive and set expected transaction bytes
 __device__ __forceinline__ void mbarrier_arrive_expect_tx(uint64_t* bar, uint32_t tx_count) {
     uint32_t bar_addr = cvta_to_shared_u32(bar);
     asm volatile("mbarrier.arrive.expect_tx.shared::cta.b64 _, [%0], %1;"
-                 :: "r"(bar_addr), "r"(tx_count));
+                 :: "r"(bar_addr), "r"(tx_count)
+                 : "memory");
 }
 
 // Arrive without tx-count
 __device__ __forceinline__ void mbarrier_arrive(uint64_t* bar) {
     uint32_t bar_addr = cvta_to_shared_u32(bar);
     asm volatile("mbarrier.arrive.shared::cta.b64 _, [%0];\n"
-                 :: "r"(bar_addr));
+                 :: "r"(bar_addr)
+                 : "memory");
 }
 
 // Spin wait on a barrier with specified phase bit
@@ -65,13 +55,14 @@ __device__ __forceinline__ void mbarrier_wait(uint64_t* bar, uint32_t phase) {
     asm volatile(
         "{\n"
         ".reg .pred P1;\n"
-        "LAB_WAIT:\n"
+        "LAB_WAIT_%=:\n"
         "mbarrier.try_wait.parity.shared::cta.b64 P1, [%0], %1;\n"  // TODO: should I try_wait or test_wait?
-        "@P1 bra DONE;\n"
-        "bra LAB_WAIT;\n"
-        "DONE:\n"
+        "@P1 bra DONE_%=;\n"
+        "bra LAB_WAIT_%=;\n"
+        "DONE_%=:\n"
         "}\n"
-        :: "r"(bar_addr), "r"(phase));
+        :: "r"(bar_addr), "r"(phase)
+        : "memory");
 }
 
 // Issue a 2D TMA load
@@ -82,7 +73,7 @@ __device__ __forceinline__ void tma_load_2d(
     uint32_t smem_addr = cvta_to_shared_u32(smem_ptr);
     uint32_t mbar_addr = cvta_to_shared_u32(mbar);
     asm volatile(
-        "cp.async.bulk.tensor.2d.shared::cluster.global.mbarrier::complete_tx::bytes"
+        "cp.async.bulk.tensor.2d.shared::cluster.global.mbarrier::complete_tx::bytes.tile"
         " [%0], [%1, {%2, %3}], [%4];"
         :: "r"(smem_addr), "l"(desc),
            "r"(coord_0), "r"(coord_1), "r"(mbar_addr)
@@ -92,7 +83,136 @@ __device__ __forceinline__ void tma_load_2d(
 // ==================================================
 //                WGMMA UTILITIES
 // ==================================================   
+template <int NumRegs>
+__device__ __forceinline__ void warpgroup_reg_deallocate() {
+    asm volatile("setmaxnreg.dec.sync.aligned.u32 %0;\n" :: "n"(NumRegs));
+}
 
+template <int NumRegs>
+__device__ __forceinline__ void warpgroup_reg_allocate() {
+    asm volatile("setmaxnreg.inc.sync.aligned.u32 %0;\n" :: "n"(NumRegs));
+}
+
+__device__ __forceinline__ void warpgroup_arrive() {
+    asm volatile("wgmma.fence.sync.aligned;\n" ::: "memory");
+}
+
+__device__ __forceinline__ void warpgroup_commit_batch() {
+    asm volatile("wgmma.commit_group.sync.aligned;\n" ::: "memory");
+}
+
+template <int N>
+__device__ __forceinline__ void warpgroup_wait() {
+    static_assert(N >= 0 && N <= 7);
+    asm volatile("wgmma.wait_group.sync.aligned %0;\n" :: "n"(N) : "memory");
+}
+
+// wgmma.mma_async.sync.aligned.m64n64k16.f32.bf16.bf16
+// 32 fp32 accumulators per thread for n64
+// TODO: template this over N
+template <bool ScaleD>
+__device__ __forceinline__ void wgmma_m64n64k16_bf16(
+    uint64_t desc_a, uint64_t desc_b,
+    float* d
+) {
+    asm volatile(
+        "wgmma.mma_async.sync.aligned.m64n64k16.f32.bf16.bf16 "
+        "{%0, %1, %2, %3, %4, %5, %6, %7, "
+        " %8, %9, %10, %11, %12, %13, %14, %15, "
+        " %16, %17, %18, %19, %20, %21, %22, %23, "
+        " %24, %25, %26, %27, %28, %29, %30, %31}, "
+        "%32, %33, "
+        "%34, 1, 1, 0, 0;\n"
+        : "+f"(d[0]),  "+f"(d[1]),  "+f"(d[2]),  "+f"(d[3]),
+          "+f"(d[4]),  "+f"(d[5]),  "+f"(d[6]),  "+f"(d[7]),
+          "+f"(d[8]),  "+f"(d[9]),  "+f"(d[10]), "+f"(d[11]),
+          "+f"(d[12]), "+f"(d[13]), "+f"(d[14]), "+f"(d[15]),
+          "+f"(d[16]), "+f"(d[17]), "+f"(d[18]), "+f"(d[19]),
+          "+f"(d[20]), "+f"(d[21]), "+f"(d[22]), "+f"(d[23]),
+          "+f"(d[24]), "+f"(d[25]), "+f"(d[26]), "+f"(d[27]),
+          "+f"(d[28]), "+f"(d[29]), "+f"(d[30]), "+f"(d[31])
+        : "l"(desc_a), "l"(desc_b),
+          "n"(ScaleD ? 1 : 0)
+        : "memory");
+}
+
+enum class Sm90GmmaSwizzleMode : uint64_t {
+    None = 0,
+    // PTX WGMMA descriptor encoding: 1=128B, 2=64B, 3=32B.
+    // This is intentionally different from CUtensorMapSwizzle enum ordering.
+    Swizzle128B = 1,
+    Swizzle64B = 2,
+    Swizzle32B = 3,
+};
+
+struct WgmmaOperandDescriptors {
+    uint64_t A;
+    uint64_t B;
+};
+
+// PTX "Matrix Descriptor Format" for wgmma.mma_async:
+// matrix-descriptor-encode(x) = (x & 0x3FFFF) >> 4.
+__device__ __forceinline__ uint32_t wgmma_matrix_descriptor_encode(uint32_t byte_offset) {
+    return (byte_offset & 0x3FFFFu) >> 4;
+}
+
+// For swizzled layouts, PTX defines base_offset from the start address of the
+// swizzle repeating pattern. This is zero when a 128B-swizzle pattern starts on
+// a 1024B boundary.
+__device__ __forceinline__ uint32_t wgmma_swizzle_base_offset(
+    uint32_t pattern_start_addr,
+    Sm90GmmaSwizzleMode swizzle
+) {
+    return swizzle == Sm90GmmaSwizzleMode::None ? 0u : ((pattern_start_addr >> 7) & 0x7u);
+}
+
+template <int KStrideElems>
+__device__ __forceinline__ uint64_t make_wgmma_bf16_k_major_smem_desc(
+    const nv_bfloat16* matrix_start,
+    const nv_bfloat16* swizzle_pattern_start
+) {
+    static_assert(KStrideElems > 0, "K stride must be positive.");
+    static_assert(KStrideElems == 64,
+                  "BF16 K-major 128B TMA/WGMMA layout requires exactly 64 contiguous K elements.");
+    static_assert((8ull * KStrideElems * sizeof(nv_bfloat16)) <= 0x3FFFFull,
+                  "WGMMA descriptor stride byte offset exceeds the encodable range.");
+
+    constexpr Sm90GmmaSwizzleMode swizzle = Sm90GmmaSwizzleMode::Swizzle128B;
+
+    // PTX SM90 GMMA K-major 128B canonical layout:
+    //   Swizzle<3,4,3> o smem_ptr o ((8,m),(T,2)):((8T,SBO),(1,T))
+    // The descriptor is independent of the WGMMA N dimension. Larger N tiles
+    // reuse the same row-major/K-contiguous B descriptor with more accumulator
+    // registers and a different wgmma.m64nNk16 opcode.
+    // For swizzled K-major layouts, PTX specifies LBO as unused/assumed 1.
+    // Descriptor fields are stored in 16-byte units by PTX's encoder.
+    constexpr uint32_t leading_byte_offset = 16;
+    constexpr uint32_t stride_byte_offset = 8u * KStrideElems * sizeof(nv_bfloat16);
+
+    const uint32_t matrix_start_addr = cvta_to_shared_u32(matrix_start);
+    const uint32_t pattern_start_addr = cvta_to_shared_u32(swizzle_pattern_start);
+
+    uint64_t desc = 0;
+    desc |= static_cast<uint64_t>(wgmma_matrix_descriptor_encode(matrix_start_addr));
+    desc |= static_cast<uint64_t>(wgmma_matrix_descriptor_encode(leading_byte_offset)) << 16;
+    desc |= static_cast<uint64_t>(wgmma_matrix_descriptor_encode(stride_byte_offset)) << 32;
+    desc |= static_cast<uint64_t>(wgmma_swizzle_base_offset(pattern_start_addr, swizzle)) << 49;
+    desc |= static_cast<uint64_t>(swizzle) << 62;
+    return desc;
+}
+
+template <int KStrideElems>
+__device__ __forceinline__ WgmmaOperandDescriptors make_wgmma_bf16_k_major_operand_descs(
+    const nv_bfloat16* a_matrix_start,
+    const nv_bfloat16* a_swizzle_pattern_start,
+    const nv_bfloat16* b_matrix_start,
+    const nv_bfloat16* b_swizzle_pattern_start
+) {
+    return {
+        make_wgmma_bf16_k_major_smem_desc<KStrideElems>(a_matrix_start, a_swizzle_pattern_start),
+        make_wgmma_bf16_k_major_smem_desc<KStrideElems>(b_matrix_start, b_swizzle_pattern_start),
+    };
+}
 
 // ==================================================
 //                 LD/ST UTILITIES

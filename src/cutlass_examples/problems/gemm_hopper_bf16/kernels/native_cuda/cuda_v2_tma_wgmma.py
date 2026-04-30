@@ -8,7 +8,7 @@ from ... import native_extension
 KERNEL_NAME = "cuda_v2_tma_wgmma"
 SOURCE = "kernels/native_cuda/cuda_v2_tma_wgmma.cu"
 EXTRA_CUDA_CFLAGS: tuple[str, ...] = ()
-EXTRA_LDFLAGS: tuple[str, ...] = ()
+EXTRA_LDFLAGS: tuple[str, ...] = ("-lcuda",)
 EXTRA_INCLUDE_PATHS: tuple[str, ...] = ()
 kernel = None
 
@@ -16,8 +16,8 @@ kernel = None
 @dataclass(frozen=True)
 class Params:
     BM: int = 128
-    BN: int = 128
-    BK: int = 16
+    BN: int = 64
+    BK: int = 64
     TM: int = 8
     TN: int = 8
 

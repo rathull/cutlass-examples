@@ -3,13 +3,12 @@
 PROBLEM=gemm_hopper_bf16
 GPU=h100
 SHAPES="1024,1024,1024;2048,2048,2048;4096,4096,4096"
-# SHAPES="1024,1024,1024;2048,2048,2048"
 DTYPE=bf16
-WARMUP_RUNS=50
-BENCH_RUNS=100
-OUT=artifacts/runs/hopper-smoke
+WARMUP_RUNS=1000
+BENCH_RUNS=10000
+OUT=artifacts/runs/hopper-cuda-v2
 
-KERNELS=cublas,cuda_v0,cuda_v1_smem_tiling
+KERNELS=cublas,cuda_v2_tma_wgmma
 
 uv run modal run -m cutlass_examples.cli \
   --command benchmark \
