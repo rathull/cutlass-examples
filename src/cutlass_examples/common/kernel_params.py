@@ -9,6 +9,8 @@ from typing import Any, Iterable, cast
 from .kernel_registry import (
     ALLOW_FAILURE_METADATA_KEY,
     EXTRA_CUDA_CFLAGS_METADATA_KEY,
+    EXTRA_INCLUDE_PATHS_METADATA_KEY,
+    EXTRA_LDFLAGS_METADATA_KEY,
     KERNEL_PARAMS_METADATA_KEY,
     KernelSpec,
     PREPARE_FACTORY_METADATA_KEY,
@@ -74,6 +76,12 @@ def _expand_spec(spec: KernelSpec, args: dict[str, str]) -> list[KernelSpec]:
                     EXTRA_CUDA_CFLAGS_METADATA_KEY: json.dumps(
                         _cuda_cflags(params, variant_name)
                     ),
+                    EXTRA_LDFLAGS_METADATA_KEY: json.dumps(
+                        _module_tuple(module, "EXTRA_LDFLAGS")
+                    ),
+                    EXTRA_INCLUDE_PATHS_METADATA_KEY: json.dumps(
+                        _module_tuple(module, "EXTRA_INCLUDE_PATHS")
+                    ),
                     RUNNER_FACTORY_METADATA_KEY: (
                         f"{_native_extension_module(spec)}:make_variant_runner"
                     ),
@@ -116,6 +124,13 @@ def _cuda_cflags(params: Any, variant_name: str) -> tuple[str, ...]:
         f"-DKERNEL_NAME={variant_name}_kernel",
         *[f"-D{name}={value}" for name, value in asdict(params).items()],
     )
+
+
+def _module_tuple(module: Any, name: str) -> tuple[str, ...]:
+    value = getattr(module, name, ())
+    if not isinstance(value, tuple) or not all(isinstance(item, str) for item in value):
+        raise TypeError(f"{module.__name__}.{name} must be a tuple[str, ...]")
+    return value
 
 
 def _native_extension_module(spec: KernelSpec) -> str:

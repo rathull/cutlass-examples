@@ -219,28 +219,50 @@ def print_comparison(results: list[KernelResult], *, baseline_kernel: str = "cub
             None,
         )
         baseline_ms = baseline.stats.median_ms if baseline else None
+        sorted_results = sorted(shape_results, key=lambda item: item.stats.median_ms)
+
+        # Pre-format all values so we can measure their widths
+        rows_data = []
+        for result in sorted_results:
+            speedup = baseline_ms / result.stats.median_ms if baseline_ms is not None else None
+            rows_data.append({
+                "kernel":  result.kernel,
+                "kind":    result.kind,
+                "median":  f"{result.stats.median_ms:.4f}",
+                "mean":    f"{result.stats.mean_ms:.4f}",
+                "std":     f"{result.stats.std_ms:.4f}",
+                "tflops":  f"{result.stats.median_tflops:.3f}",
+                "speedup": f"{speedup:.2f}x" if speedup is not None else None,
+            })
+
+        # Compute column widths from headers and all row values
+        columns = ["kernel", "kind", "median", "mean", "std", "tflops"]
+        headers = ["kernel", "kind", "median", "mean", "std", "TFLOPS"]
+        if baseline_ms is not None:
+            columns.append("speedup")
+            headers.append("speedup")
+
+        widths = {
+            col: max(len(hdr), *(len(row[col] or "") for row in rows_data))
+            for col, hdr in zip(columns, headers)
+        }
+
+        header = "  ".join(
+            hdr.ljust(widths[col]) if col in ("kernel", "kind") else hdr.rjust(widths[col])
+            for col, hdr in zip(columns, headers)
+        )
 
         print(f"\nComparison for {shape_label} (latency in ms):")
-        header = (
-            f"{'kernel':24s} {'kind':12s} "
-            f"{'median':>10s} {'mean':>10s} {'std':>10s} {'TFLOPS':>10s}"
-        )
-        if baseline_ms is not None:
-            header += f" {'speedup':>10s}"
         print(header)
         print("-" * len(header))
 
-        for result in sorted(shape_results, key=lambda item: item.stats.median_ms):
-            row = (
-                f"{result.kernel:24s} {result.kind:12s} "
-                f"{result.stats.median_ms:10.4f} "
-                f"{result.stats.mean_ms:10.4f} "
-                f"{result.stats.std_ms:10.4f} "
-                f"{result.stats.median_tflops:10.3f}"
+        for row in rows_data:
+            line = "  ".join(
+                (row[col] or "").ljust(widths[col]) if col in ("kernel", "kind")
+                else (row[col] or "").rjust(widths[col])
+                for col in columns
             )
-            if baseline_ms is not None:
-                row += f" {baseline_ms / result.stats.median_ms:9.2f}x"
-            print(row)
+            print(line)
 
 
 def write_artifacts(record: RunRecord, output_dir: Path) -> None:

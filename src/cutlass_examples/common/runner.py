@@ -79,6 +79,9 @@ def run_gemm_benchmark(
                 )
                 try:
                     actual = fn(inputs, correctness_outputs)
+                    if actual is None:
+                        actual = correctness_outputs.c
+                    torch.cuda.synchronize()
                 except Exception as exc:
                     if not _allows_failure(spec):
                         raise
@@ -93,9 +96,6 @@ def run_gemm_benchmark(
                     if print_results:
                         print(f"{spec.name} run failed: {exc}")
                     continue
-                if actual is None:
-                    actual = correctness_outputs.c
-                torch.cuda.synchronize()
                 correctness = (
                     check_correctness(actual, expected, dtype=config.dtype)
                     if expected is not None

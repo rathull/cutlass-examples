@@ -5,8 +5,8 @@ from typing import cast
 
 from ... import native_extension
 
-KERNEL_NAME = "cuda_v2_tma_wgmma"
-SOURCE = "kernels/native_cuda/cuda_v2_tma_wgmma.cu"
+KERNEL_NAME = "cuda_v3_persistent"
+SOURCE = "kernels/native_cuda/cuda_v3_persistent.cu"
 EXTRA_CUDA_CFLAGS: tuple[str, ...] = ()
 EXTRA_LDFLAGS: tuple[str, ...] = ("-lcuda",)
 EXTRA_INCLUDE_PATHS: tuple[str, ...] = ()
@@ -19,6 +19,7 @@ class Params:
     BN: int = 256
     BK: int = 64
     NUM_STAGES: int = 4
+    NUM_THREAD_BLOCKS: int = 128
 
 
 def prepare(*, force_prepare: bool = False) -> None:

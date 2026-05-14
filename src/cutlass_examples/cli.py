@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import itertools
 from pathlib import Path
 from typing import Any, cast
 
@@ -37,7 +38,7 @@ from .problems.gemm_hopper_bf16.registry import get_registry
 LOCAL_PACKAGE_DIR = Path(__file__).resolve().parent
 REMOTE_CUTLASS_PATH = Path("/opt/cutlass")
 DEFAULT_OUTPUT_DIR = "artifacts/runs/latest"
-BENCHMARK_TIMEOUT_SECONDS = 30 * 60
+BENCHMARK_TIMEOUT_SECONDS = 60 * 60
 PTXAS_TIMEOUT_SECONDS = 20 * 60
 
 image = build_kernel_image(
@@ -72,7 +73,7 @@ def _doctor_b200() -> dict[str, object]:
 
 @app.function(
     gpu="H100!",
-    timeout=PTXAS_TIMEOUT_SECONDS,
+    timeout=BENCHMARK_TIMEOUT_SECONDS,
     volumes={str(BUILD_CACHE_DIR): build_cache_sm90, str(ARTIFACTS_DIR): artifacts_volume},
 )
 def _benchmark_h100(job: dict[str, Any]) -> dict[str, object]:
@@ -81,6 +82,7 @@ def _benchmark_h100(job: dict[str, Any]) -> dict[str, object]:
 
 @app.function(
     gpu="H100!",
+    timeout=PTXAS_TIMEOUT_SECONDS,
     volumes={str(BUILD_CACHE_DIR): build_cache_sm90, str(ARTIFACTS_DIR): artifacts_volume},
 )
 def _ptxas_h100(job: dict[str, Any]) -> dict[str, object]:
@@ -117,6 +119,7 @@ def main(
     bm: str = "",
     bn: str = "",
     bk: str = "",
+    num_stages: str = "",
     tm: str = "",
     tn: str = "",
     warmup_runs: int = DEFAULT_WARMUP_RUNS,
@@ -131,7 +134,14 @@ def main(
     out: str = DEFAULT_OUTPUT_DIR,
 ) -> None:
     normalized_gpu = normalize_gpu(gpu)
-    kernel_args = _kernel_args(BM=bm, BN=bn, BK=bk, TM=tm, TN=tn)
+    kernel_args = _kernel_args(
+        BM=bm,
+        BN=bn,
+        BK=bk,
+        NUM_STAGES=num_stages,
+        TM=tm,
+        TN=tn,
+    )
 
     if command == "doctor":
         _print_doctor(_doctor_fn(normalized_gpu).remote())
@@ -219,10 +229,10 @@ def main(
         )
         fn = _benchmark_fn(normalized_gpu)
         try:
-            records = (
-                list(fn.map(jobs))
-                if parse_bool(parallel)
-                else [fn.remote(job) for job in jobs]
+            records = _run_sweep_jobs(
+                fn,
+                jobs,
+                parallel=parse_bool(parallel),
             )
         except FunctionTimeoutError as exc:
             _write_timeout_artifact(
@@ -304,6 +314,94 @@ def _run_remote_job(job: dict[str, Any]) -> dict[str, object]:
     return record.to_dict()
 
 
+def _run_sweep_jobs(fn: Any, jobs: list[dict[str, Any]], *, parallel: bool) -> list[dict[str, object]]:
+    if parallel:
+        raw_records = list(fn.map(jobs, return_exceptions=True))
+    else:
+        raw_records = []
+        for job in jobs:
+            try:
+                raw_records.append(fn.remote(job))
+            except Exception as exc:
+                raw_records.append(exc)
+
+    return [
+        _coerce_sweep_record(job, raw_record)
+        for job, raw_record in zip(jobs, raw_records, strict=True)
+    ]
+
+
+def _coerce_sweep_record(job: dict[str, Any], raw_record: object) -> dict[str, object]:
+    if isinstance(raw_record, Exception):
+        return _remote_failure_record(job, raw_record)
+    if not isinstance(raw_record, dict):
+        raise TypeError(f"Expected sweep record dict, got {type(raw_record).__name__}")
+    return cast(dict[str, object], raw_record)
+
+
+def _remote_failure_record(job: dict[str, Any], exc: Exception) -> dict[str, object]:
+    from .common.benchmarking import (
+        CorrectnessResult,
+        KernelResult,
+        default_metadata,
+        summarize_latency,
+    )
+    from .common.kernel_registry import KERNEL_PARAMS_METADATA_KEY
+
+    registry = get_registry()
+    specs = _resolve_specs(registry, job)
+    if job["benchmark_ref"] and all(spec.name != "cublas" for spec in specs):
+        specs.insert(0, registry.get("cublas"))
+
+    shapes = tuple(ShapeSpec.from_tuple(shape) for shape in parse_shapes(job["shapes"]))
+    config = config_from_parts(
+        problem=job["problem"],
+        gpu=job["gpu"],
+        kernels=[spec.name for spec in specs],
+        shapes=shapes,
+        dtype=job["dtype"],
+        warmup_runs=job["warmup_runs"],
+        bench_runs=job["bench_runs"],
+        quantiles=parse_quantiles(job["quantiles"]),
+        repetitions=job["repetitions"],
+        seed=job["seed"],
+        check_correctness=job["check_correctness"],
+        benchmark_ref=job["benchmark_ref"],
+    )
+
+    error = f"remote job failed: {type(exc).__name__}: {exc}"
+    results = []
+    for repetition in range(config.repetitions):
+        for shape in config.shapes:
+            for spec in specs:
+                result = KernelResult(
+                    problem=config.problem,
+                    kernel=spec.name,
+                    kind=spec.kind,
+                    gpu=config.gpu,
+                    shape=shape,
+                    dtype=config.dtype,
+                    stats=summarize_latency(
+                        [float("nan")],
+                        shape=shape,
+                        quantiles=config.quantiles,
+                    ),
+                    correctness=CorrectnessResult(passed=False, error=error),
+                    repetition=repetition,
+                    kernel_path=spec.source or spec.metadata.get("path"),
+                )
+                object.__setattr__(result.stats, "samples", 0)
+                kernel_params = spec.metadata.get(KERNEL_PARAMS_METADATA_KEY)
+                if kernel_params is not None:
+                    object.__setattr__(result, "kernel_params", kernel_params)
+                results.append(result)
+
+    metadata = default_metadata()
+    metadata["remote_exception"] = type(exc).__name__
+    metadata["remote_error"] = str(exc)
+    return RunRecord(config=config, results=results, metadata=metadata).to_dict()
+
+
 def _run_remote_ptxas(job: dict[str, Any]) -> dict[str, object]:
     registry = get_registry()
     specs = _resolve_specs(registry, job)
@@ -337,13 +435,20 @@ def _make_job(**kwargs: Any) -> dict[str, Any]:
 
 def _make_sweep_jobs(**kwargs: Any) -> list[dict[str, Any]]:
     shapes = parse_shapes(kwargs["shapes"])
+    kernel_arg_grid = _kernel_arg_grid(
+        cast(dict[str, str], kwargs.get("kernel_args", {}))
+    )
     jobs = []
     for idx, shape in enumerate(shapes):
-        job = dict(kwargs)
-        job["shapes"] = ",".join(str(dim) for dim in shape)
-        job["seed"] = kwargs["seed"] + idx
-        job["print_results"] = False
-        jobs.append(job)
+        for arg_idx, kernel_args in enumerate(kernel_arg_grid):
+            job = dict(kwargs)
+            job["kernel_args"] = kernel_args
+            job["shapes"] = ",".join(str(dim) for dim in shape)
+            job["seed"] = kwargs["seed"] + idx
+            job["print_results"] = False
+            if len(kernel_arg_grid) > 1:
+                job["benchmark_ref"] = kwargs["benchmark_ref"] and arg_idx == 0
+            jobs.append(job)
     return jobs
 
 
@@ -363,6 +468,26 @@ def _resolve_specs(registry, job: dict[str, Any]):
 
 def _kernel_args(**kwargs: str) -> dict[str, str]:
     return {key: value for key, value in kwargs.items() if value.strip()}
+
+
+def _kernel_arg_grid(kernel_args: dict[str, str]) -> list[dict[str, str]]:
+    if not kernel_args:
+        return [{}]
+
+    names = tuple(kernel_args)
+    values_by_name = [
+        tuple(value.strip() for value in kernel_args[name].split(",") if value.strip())
+        for name in names
+    ]
+    empty_names = [
+        name for name, values in zip(names, values_by_name, strict=True) if not values
+    ]
+    if empty_names:
+        raise ValueError(f"Expected values for sweep parameter(s): {', '.join(empty_names)}")
+    return [
+        dict(zip(names, values, strict=True))
+        for values in itertools.product(*values_by_name)
+    ]
 
 
 def _benchmark_fn(gpu: str):

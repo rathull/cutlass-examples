@@ -4,11 +4,11 @@ PROBLEM=gemm_hopper_bf16
 GPU=h100
 SHAPES="1024,1024,1024;2048,2048,2048;4096,4096,4096"
 DTYPE=bf16
-WARMUP_RUNS=1000
-BENCH_RUNS=10000
-OUT=artifacts/runs/hopper-cuda-v2
+WARMUP_RUNS=10
+BENCH_RUNS=10
+OUT=artifacts/runs/hopper-cute-cpp
 
-KERNELS=cublas,cuda_v2_tma_wgmma
+KERNELS=cublas,cute_cpp_v0,cute_cpp_v1_tma_wgmma
 
 uv run modal run -m cutlass_examples.cli \
   --command benchmark \

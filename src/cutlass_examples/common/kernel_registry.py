@@ -7,6 +7,8 @@ from typing import Any
 
 KERNEL_PARAMS_METADATA_KEY = "kernel_params"
 EXTRA_CUDA_CFLAGS_METADATA_KEY = "extra_cuda_cflags"
+EXTRA_LDFLAGS_METADATA_KEY = "extra_ldflags"
+EXTRA_INCLUDE_PATHS_METADATA_KEY = "extra_include_paths"
 RUNNER_FACTORY_METADATA_KEY = "runner_factory"
 PREPARE_FACTORY_METADATA_KEY = "prepare_factory"
 PTXAS_FACTORY_METADATA_KEY = "ptxas_factory"

@@ -3,39 +3,28 @@ set -euo pipefail
 
 PROBLEM=gemm_hopper_bf16
 GPU=h100
-KERNELS=cuda_v1_smem_tiling
+KERNELS=cuda_v2_tma_wgmma
 SHAPES="4096,4096,4096"
 DTYPE=bf16
-WARMUP_RUNS=20
-BENCH_RUNS=50
+WARMUP_RUNS=50
+BENCH_RUNS=200
 REPETITIONS=1
 CHECK_CORRECTNESS=true
 BENCHMARK_REF=true
 FORCE_PREPARE=false
-OUT=artifacts/runs/hopper-native-tile-sweep-stage2
+PARALLEL=true
+OUT=artifacts/runs/hopper-cuda-v2-tma-wgmma-sweep
 
-# Stage 2: local search around the best point from the previous run:
-#   bm128_bn64_bk32_tm8_tn8
-#
-# The previous sweep showed:
-# - TM=8,TN=8 dominated TM=4,TN=8.
-# - BN=64 dominated BN=128.
-# - BK=32 was slightly better than BK=16.
-#
-# This sweep asks:
-# - Does a larger M tile improve reuse/occupancy? 128 -> 192/256.
-# - Is BN=64 actually optimal, or do 32/96 win?
-# - Does BK=64 improve K reuse enough to offset smem/load cost?
-#
-# 18 variants total, plus cublas when BENCHMARK_REF=true.
+# TODO: see if BN=256 can be supported at all
 BM=128,192,256
-BN=32,64,96
-BK=32,64
-TM=8
-TN=8
+BN=256
+BK=64
+NUM_STAGES=2,4
+
+# Want to try (128, 128, 64), (256, 128, 64), (128, 256, 64)
 
 uv run modal run -m cutlass_examples.cli \
-  --command benchmark \
+  --command sweep \
   --problem "$PROBLEM" \
   --gpu "$GPU" \
   --kernels "$KERNELS" \
@@ -44,12 +33,12 @@ uv run modal run -m cutlass_examples.cli \
   --bm "$BM" \
   --bn "$BN" \
   --bk "$BK" \
-  --tm "$TM" \
-  --tn "$TN" \
+  --num-stages "$NUM_STAGES" \
   --warmup-runs "$WARMUP_RUNS" \
   --bench-runs "$BENCH_RUNS" \
   --repetitions "$REPETITIONS" \
   --check-correctness "$CHECK_CORRECTNESS" \
   --benchmark-ref "$BENCHMARK_REF" \
   --force-prepare "$FORCE_PREPARE" \
+  --parallel "$PARALLEL" \
   --out "$OUT"

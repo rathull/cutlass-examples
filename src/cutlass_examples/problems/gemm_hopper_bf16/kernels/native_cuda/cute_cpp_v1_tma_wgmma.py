@@ -5,10 +5,10 @@ from typing import cast
 
 from ... import native_extension
 
-KERNEL_NAME = "cuda_v2_tma_wgmma"
-SOURCE = "kernels/native_cuda/cuda_v2_tma_wgmma.cu"
+KERNEL_NAME = "cute_cpp_v1_tma_wgmma"
+SOURCE = "kernels/native_cuda/cute_cpp_v1_tma_wgmma.cu"
 EXTRA_CUDA_CFLAGS: tuple[str, ...] = ()
-EXTRA_LDFLAGS: tuple[str, ...] = ("-lcuda",)
+EXTRA_LDFLAGS: tuple[str, ...] = ()
 EXTRA_INCLUDE_PATHS: tuple[str, ...] = ()
 kernel = None
 
@@ -16,9 +16,10 @@ kernel = None
 @dataclass(frozen=True)
 class Params:
     BM: int = 128
-    BN: int = 256
+    BN: int = 64
     BK: int = 64
-    NUM_STAGES: int = 4
+    TM: int = 8
+    TN: int = 8
 
 
 def prepare(*, force_prepare: bool = False) -> None:

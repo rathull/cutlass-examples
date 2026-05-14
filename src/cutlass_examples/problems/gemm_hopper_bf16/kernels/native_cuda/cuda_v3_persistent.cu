@@ -23,12 +23,16 @@
 #define NUM_STAGES 4
 #endif
 
+#ifndef NUM_THREAD_BLOCKS
+#define NUM_THREAD_BLOCKS 128
+#endif
+
 #ifndef ENTRYPOINT
-#define ENTRYPOINT cuda_v2_tma_wgmma
+#define ENTRYPOINT cuda_v3_persistent
 #endif
 
 #ifndef KERNEL_NAME
-#define KERNEL_NAME cuda_v2_tma_wgmma_kernel
+#define KERNEL_NAME cuda_v3_persistent_kernel
 #endif
 
 constexpr bool is_supported_wgmma_n(int n) {
@@ -41,6 +45,8 @@ constexpr CUtensorMapSwizzle tma_swizzle_for_bf16_k(int bk) {
                       CU_TENSOR_MAP_SWIZZLE_32B;
 }
 
+constexpr int regs_per_consumer_thread = 232;
+constexpr int regs_per_producer_thread = 40;
 constexpr int num_consumer_groups = BM / 64;
 constexpr int num_consumer_threads = 128 * num_consumer_groups;
 constexpr int num_producer_threads = 128;
@@ -58,9 +64,6 @@ struct alignas(1024) SharedStorage {
 };
 using SmemT = SharedStorage<BM, BN, BK, NUM_STAGES>;
 constexpr int smem_size = sizeof(SmemT);
-
-constexpr int regs_per_consumer_thread = 232;
-constexpr int regs_per_producer_thread = 40;
 
 // TODO: need to figure out how to handle case where dimensions are not divisble by 64
 static_assert(BM > 0 && BN > 0 && BK > 0, "Tile dimensions must be positive.");

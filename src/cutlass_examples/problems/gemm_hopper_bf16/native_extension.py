@@ -5,7 +5,12 @@ from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import NamedTuple
 
-from ...common.kernel_registry import EXTRA_CUDA_CFLAGS_METADATA_KEY, KernelSpec
+from ...common.kernel_registry import (
+    EXTRA_CUDA_CFLAGS_METADATA_KEY,
+    EXTRA_INCLUDE_PATHS_METADATA_KEY,
+    EXTRA_LDFLAGS_METADATA_KEY,
+    KernelSpec,
+)
 
 BASE_MODULE_NAME = "gemm_hopper_bf16_native"
 REMOTE_PROBLEM_DIR = Path("/opt/cutlass_examples/problems/gemm_hopper_bf16")
@@ -143,6 +148,8 @@ def inspect_ptxas_variant(spec: KernelSpec, *, force_prepare: bool = False) -> s
         return_build_log=True,
         source=_require_spec_source(spec),
         extra_cuda_cflags=_extra_cuda_cflags(spec),
+        extra_ldflags=_extra_ldflags(spec),
+        extra_include_paths=_extra_include_paths(spec),
     )
     assert isinstance(compiled, NativeKernel)
     return compiled.build_log
@@ -157,6 +164,8 @@ def _load_variant(spec: KernelSpec, *, force_prepare: bool = False) -> Callable[
         force_prepare=force_prepare,
         source=_require_spec_source(spec),
         extra_cuda_cflags=_extra_cuda_cflags(spec),
+        extra_ldflags=_extra_ldflags(spec),
+        extra_include_paths=_extra_include_paths(spec),
     )
     loaded = getattr(ops, spec.name)
     _variant_kernels[spec.name] = loaded
@@ -174,9 +183,27 @@ def _extra_cuda_cflags(spec: KernelSpec) -> tuple[str, ...]:
     raw = spec.metadata.get(EXTRA_CUDA_CFLAGS_METADATA_KEY)
     if raw is None:
         return ()
+    return _parse_string_list_metadata(spec, EXTRA_CUDA_CFLAGS_METADATA_KEY, raw)
+
+
+def _extra_ldflags(spec: KernelSpec) -> tuple[str, ...]:
+    raw = spec.metadata.get(EXTRA_LDFLAGS_METADATA_KEY)
+    if raw is None:
+        return ()
+    return _parse_string_list_metadata(spec, EXTRA_LDFLAGS_METADATA_KEY, raw)
+
+
+def _extra_include_paths(spec: KernelSpec) -> tuple[str, ...]:
+    raw = spec.metadata.get(EXTRA_INCLUDE_PATHS_METADATA_KEY)
+    if raw is None:
+        return ()
+    return _parse_string_list_metadata(spec, EXTRA_INCLUDE_PATHS_METADATA_KEY, raw)
+
+
+def _parse_string_list_metadata(spec: KernelSpec, key: str, raw: str) -> tuple[str, ...]:
     parsed = json.loads(raw)
     if not isinstance(parsed, list) or not all(isinstance(item, str) for item in parsed):
-        raise ValueError(f"Invalid extra CUDA flags metadata for {spec.name!r}: {raw!r}")
+        raise ValueError(f"Invalid {key} metadata for {spec.name!r}: {raw!r}")
     return tuple(parsed)
 
 
